@@ -50,7 +50,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 20px;
-  padding: calc(var(--header-h) + 20px) 24px calc(var(--player-h) + 100px);
+  padding: calc(var(--header-h) + 20px) 24px 24px;
   overflow-y: auto;
   min-height: 0;
 }
@@ -1330,6 +1330,11 @@ body.dark .vocab-stat-chip { background: #031827; }
 body.dark .vocab-count-badge.freq-high { background: #422006; color: #fbbf24; }
 body.dark .vocab-count-badge.freq-med  { background: #0c2d48; color: #38bdf8; }
 body.dark .vocab-search { background: #0d0d0d; }
+
+@keyframes audioBarIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 </style>
 <body>
 
@@ -1359,9 +1364,6 @@ body.dark .vocab-search { background: #0d0d0d; }
         <i class="fa-solid fa-music"></i> Audio
         <input type="file" id="audioInput" accept="audio/*" hidden>
       </button>
-       <button class="file-btn" id="csvBtn" onclick="openCsvManager()" title="Manage word CSV highlight lists">
-        <i class="fa-solid fa-highlighter"></i> Words CSV
-      </button>
       <!-- Lesson dropdown -->
       <div class="dropdown-wrap" id="lessonWrap">
         <button class="file-btn" id="lessonBtn" onclick="toggleDropdown('lessonMenu', event)">
@@ -1380,7 +1382,9 @@ body.dark .vocab-search { background: #0d0d0d; }
       <input type="file" id="lessonInput" accept=".json" hidden>
 
       
-     
+      <button class="file-btn" id="csvBtn" onclick="openCsvManager()" title="Manage word CSV highlight lists">
+        <i class="fa-solid fa-highlighter"></i> Words CSV
+      </button>
       
       <button class="file-btn" id="vocabBtn" onclick="openVocabPanel()" title="Vocabulary statistics">
         <i class="fa-solid fa-chart-simple"></i> Vocab Stats
@@ -1442,7 +1446,7 @@ body.dark .vocab-search { background: #0d0d0d; }
 
 <div id="hlTooltip"></div>
 
-<div class="audio-bar">
+<div class="audio-bar" id="audioBar" style="display:none;">
 
   <!-- Top row: file name + speed + chapters -->
   <div class="player-top-row">
@@ -2072,6 +2076,12 @@ document.getElementById('audioInput').addEventListener('change', function(e) {
   const name = file.name.length > 20 ? file.name.slice(0, 18) + '…' : file.name;
   document.getElementById('audioStatus').innerText = name;
   document.getElementById('audioBtn').classList.add('loaded');
+  // Reveal the player bar
+  const bar = document.getElementById('audioBar');
+  bar.style.display = '';
+  bar.style.animation = 'audioBarIn 0.3s ease';
+  // Reserve bottom space for the player
+  document.getElementById('mainArea').style.paddingBottom = 'calc(var(--player-h) + 100px)';
   // Generate waveform
   generateWaveform(file);
 });
