@@ -1,0 +1,3174 @@
+<!DOCTYPE html>
+<html lang="ja-JP">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="JP Studio — Japanese sentence study tool with audio sync, furigana, and vocabulary tracking.">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta name="referrer" content="no-referrer">
+<title>JP Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer">
+<script src="https://cdn.jsdelivr.net/npm/kuroshiro@1.2.0/dist/kuroshiro.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/kuroshiro-analyzer-kuromoji@1.1.0/dist/kuroshiro-analyzer-kuromoji.min.js" defer></script>
+<style>
+/* ===== TOKENS ===== */
+:root {
+  --primary: #4f46e5;
+  --primary-light: #eef2ff;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #1e293b;
+  --muted: #94a3b8;
+  --border: #e2e8f0;
+  --header-h: 56px;
+  --player-h: 68px;
+  --radius: 16px;
+}
+
+* { box-sizing: border-box; outline: none; margin: 0; padding: 0; }
+
+body {
+  font-family: "Noto Serif JP", serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ===== LAYOUT ===== */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: calc(var(--header-h) + 20px) 24px calc(var(--player-h) + 100px);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ===== HEADER ===== */
+.header {
+  position: fixed;
+  top: 0; left: 0;
+  right: 0;
+  height: var(--header-h);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 400;
+  gap: 12px;
+}
+
+.header-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+.file-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.file-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  user-select: none;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: inherit;
+  transition: border-color .15s, color .15s;
+}
+.file-btn:hover { border-color: var(--primary); color: var(--primary); }
+.file-btn.loaded { border-color: #86efac; color: #16a34a; background: #f0fdf4; }
+
+/* ===== LESSON CARD ===== */
+.lesson-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+  padding: 48px 44px 40px;
+  text-align: center;
+  width: 100%;
+  max-width: 1080px;
+  height: 450px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  border-left: 4px solid transparent;
+  transition: border-color .25s, padding-left .25s;
+}
+
+.sentence-num {
+  position: absolute;
+  top: 14px; left: 16px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.jp-text {
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 550;
+  line-height: 2.9;
+  cursor: text;
+  margin-bottom: 12px;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+
+ruby { display: inline-ruby; }
+rt {
+  font-family: "Noto Serif JP", serif;
+  font-size: 0.45em;
+  font-weight: 400;
+  color: #000000;
+  letter-spacing: 0.05em;
+  position: relative;
+  z-index: 2;
+  margin-bottom: 4px;
+}
+.jp-text.furi-loading { opacity: 0.35; }
+.jp-text { transition: opacity 0.18s; }
+
+.hl {
+  background: #fde68a; /* default fallback, overridden inline */
+  border-radius: 4px;
+  padding: 0 2px;
+  transition: background .15s;
+  position: relative;
+  cursor: help;
+}
+
+/* Shared hover tooltip */
+#hlTooltip {
+  position: fixed;
+  background: #1e293b;
+  color: #f8fafc;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 500;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+  display: none;
+  max-width: 320px;
+  text-align: center;
+  line-height: 1.5;
+  transform: translateX(-50%);
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+#hlTooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1e293b;
+}
+
+.en-text {
+  font-size: 1.2rem;
+  color: #64748b;
+  min-height: 1.6em;
+}
+
+/* ===== NAV CONTROLS ===== */
+.nav-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 780px;
+}
+
+.btn-nav {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  cursor: pointer;
+  font-size: 1.1rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: .15s;
+  color: var(--text);
+  position: relative;
+}
+.btn-nav:hover { border-color: var(--primary); color: var(--primary); transform: scale(1.05); }
+.btn-nav.primary { background: var(--primary); color: white; border-color: var(--primary); }
+.btn-nav.primary:hover { opacity: .88; transform: scale(1.05); }
+
+.btn-nav.secondary { width: 42px; height: 42px; font-size: 0.9rem; color: var(--muted); }
+.btn-nav.secondary:hover { color: var(--primary); }
+
+.btn-nav.active-toggle {
+  background: #f0fdf4; color: #16a34a; border-color: #86efac;
+}
+
+.lesson-counter {
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 70px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcut-hint {
+  font-size: 0.65rem;
+  color: #cbd5e1;
+  text-align: center;
+}
+.shortcut-hint kbd {
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
+/* ===== AUDIO PLAYER ===== */
+.audio-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(580px, calc(100vw - 48px));
+  background: #f4f4f5;
+  border-radius: 20px;
+  padding: 14px 20px 16px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.07),
+    0 24px 60px rgba(0,0,0,0.45),
+    0 8px 20px rgba(0,0,0,0.3);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Top row: file name + speed + chapters */
+.player-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#audioStatus {
+  font-size: 0.72rem;
+  color: #1367dd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  letter-spacing: 0.01em;
+}
+
+.player-meta-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.pmeta-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #1769db;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  padding: 3px 9px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: .15s;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.pmeta-btn:hover { background: rgba(153, 152, 152, 0.13); color: #0b6ae6; }
+.pmeta-btn.active { background: rgba(99,102,241,0.25); border-color: rgba(99,102,241,0.5); color: #a5b4fc; }
+
+/* Progress / waveform row */
+.player-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.player-time {
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  color: #475569;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 32px;
+}
+.player-time.right { text-align: right; }
+
+/* Custom seek track */
+.seek-track {
+  flex: 1;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+}
+.seek-track-inner {
+  width: 100%;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  position: relative;
+  overflow: visible;
+}
+.seek-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  border-radius: 2px;
+  width: 0%;
+  transition: width .1s linear;
+  position: relative;
+}
+.seek-fill::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  background: #e0e7ff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.35);
+  opacity: 0;
+  transition: opacity .15s, transform .15s;
+}
+.seek-track:hover .seek-fill::after { opacity: 1; }
+
+/* A-B Loop region overlay */
+.ab-region {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(251,191,36,0.35);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.ab-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+}
+.ab-marker.a { background: #fbbf24; box-shadow: 0 0 0 2px rgba(251,191,36,0.4); }
+.ab-marker.b { background: #f97316; box-shadow: 0 0 0 2px rgba(249,115,22,0.4); }
+
+/* AB button in player meta */
+.pmeta-btn.ab-active { background: rgba(251,191,36,0.2); border-color: rgba(251,191,36,0.5); color: #fbbf24; }
+
+/* Invisible range input layered on top */
+.seek-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+/* Main controls row */
+.player-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pctrl-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: color .15s, background .15s, transform .12s;
+  flex-shrink: 0;
+}
+.pctrl-btn:hover { color: #e2e8f0; }
+.pctrl-btn:active { transform: scale(0.9); }
+
+.pctrl-skip {
+  width: 36px; height: 36px;
+  font-size: 0.9rem;
+  flex-direction: column;
+  gap: 1px;
+}
+.pctrl-skip:hover { background: rgba(255,255,255,0.07); }
+
+.pctrl-skip-label {
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  color: inherit;
+}
+
+.pctrl-play {
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+  color: white;
+  font-size: 1.1rem;
+  border-radius: 50%;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.5);
+  transition: opacity .15s, transform .12s, box-shadow .15s;
+}
+.pctrl-play:hover { opacity: .9; box-shadow: 0 6px 28px rgba(99,102,241,0.65); }
+.pctrl-play:active { transform: scale(0.93); }
+
+.pctrl-replay {
+  width: 36px; height: 36px;
+  font-size: 0.85rem;
+}
+.pctrl-replay:hover { background: rgba(255,255,255,0.07); }
+
+.pctrl-autopause {
+  width: 36px; height: 36px;
+  font-size: 0.8rem;
+}
+.pctrl-autopause:hover { background: rgba(255,255,255,0.07); }
+.pctrl-autopause.active { color: #6ee7b7; }
+
+/* ===== CHAPTERS PANEL ===== */
+#chaptersPanel {
+  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 28px rgba(0,0,0,0.12);
+  width: 400px; max-height: 340px;
+  display: none; flex-direction: column; z-index: 510; overflow: hidden;
+}
+#chaptersPanel.open { display: flex; }
+.chapters-header {
+  padding: 12px 16px; border-bottom: 1px solid #f1f5f9;
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 600; font-size: 0.82rem;
+}
+.chapters-list { overflow-y: auto; flex: 1; padding: 6px 0; }
+.chapter-item {
+  display: flex; align-items: center; padding: 8px 16px;
+  cursor: pointer; gap: 10px; font-size: 0.82rem; transition: background .12s;
+}
+.chapter-item:hover { background: #f8fafc; }
+.chapter-item.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.chapter-time { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 42px; }
+.chapter-item.active .chapter-time { color: var(--primary); }
+.ch-del { margin-left: auto; color: #cbd5e1; font-size: 0.65rem; opacity: 0; transition: opacity .15s; padding: 4px; }
+.chapter-item:hover .ch-del { opacity: 1; }
+.add-chapter-row { padding: 10px 14px; border-top: 1px solid #f1f5f9; display: flex; gap: 8px; }
+.add-chapter-row input {
+  flex: 1; padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border);
+  font-size: 0.78rem; font-family: inherit;
+}
+.add-chapter-row input:focus { border-color: var(--primary); }
+.add-chapter-btn {
+  padding: 6px 12px; background: var(--primary); color: white;
+  border: none; border-radius: 7px; font-size: 0.78rem;
+  cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.add-chapter-btn:hover { opacity: .87; }
+.chapters-empty { padding: 20px; color: var(--muted); font-size: 0.8rem; text-align: center; line-height: 1.6; }
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  color: var(--muted); text-align: center;
+}
+.empty-state i { font-size: 2.5rem; color: #c7d2fe; }
+.empty-state h2 { font-size: 1.1rem; color: #475569; font-weight: 600; }
+.empty-state p { font-size: 0.85rem; line-height: 1.6; }
+
+/* ===== SHORTCUTS MODAL ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(4px);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+.modal-overlay.open {
+  opacity: 1;
+  pointer-events: all;
+}
+.modal {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 28px 32px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+  width: min(420px, calc(100vw - 40px));
+  transform: translateY(12px) scale(0.97);
+  transition: transform .2s;
+}
+.modal-overlay.open .modal {
+  transform: translateY(0) scale(1);
+}
+.modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 1rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: .15s;
+}
+.modal-close:hover { color: var(--text); background: var(--bg); }
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 20px;
+  align-items: center;
+}
+.shortcut-grid kbd {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #475569;
+  white-space: nowrap;
+  justify-self: start;
+  box-shadow: 0 1px 0 var(--border);
+}
+.shortcut-grid span {
+  font-size: 0.82rem;
+  color: #64748b;
+}
+.shortcut-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* ===== DIFFICULTY RATING ===== */
+.rating-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 780px;
+}
+
+.rating-strip-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.rating-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.rating-dot {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--muted);
+  transition: transform .12s, border-color .12s, background .12s, color .12s;
+  display: flex; align-items: center; justify-content: center;
+}
+.rating-dot:hover { transform: scale(1.18); }
+
+/* 1 = green … 5 = red */
+.rating-dot[data-r="1"].active { background:#22c55e; border-color:#22c55e; color:#fff; }
+.rating-dot[data-r="2"].active { background:#84cc16; border-color:#84cc16; color:#fff; }
+.rating-dot[data-r="3"].active { background:#f59e0b; border-color:#f59e0b; color:#fff; }
+.rating-dot[data-r="4"].active { background:#f97316; border-color:#f97316; color:#fff; }
+.rating-dot[data-r="5"].active { background:#ef4444; border-color:#ef4444; color:#fff; }
+
+.rating-label {
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 4px;
+  min-height: 1em;
+}
+
+/* Finish lesson button */
+.finish-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s, transform .12s;
+  display: none;
+}
+.finish-btn:hover { opacity: .88; transform: scale(1.03); }
+
+/* ===== RESULTS MODAL ===== */
+.results-modal {
+  width: min(640px, calc(100vw - 40px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+.results-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.results-stat {
+  flex: 1;
+  min-width: 80px;
+  border-radius: 10px;
+  padding: 10px 14px;
+  text-align: center;
+}
+.results-stat .stat-n  { font-size: 1.5rem; font-weight: 700; line-height: 1; }
+.results-stat .stat-lbl{ font-size: 0.68rem; color: #64748b; margin-top: 3px; }
+.results-stat.s1 { background:#dcfce7; } .results-stat.s1 .stat-n { color:#16a34a; }
+.results-stat.s2 { background:#ecfccb; } .results-stat.s2 .stat-n { color:#65a30d; }
+.results-stat.s3 { background:#fef9c3; } .results-stat.s3 .stat-n { color:#ca8a04; }
+.results-stat.s4 { background:#ffedd5; } .results-stat.s4 .stat-n { color:#ea580c; }
+.results-stat.s5 { background:#fee2e2; } .results-stat.s5 .stat-n { color:#dc2626; }
+.results-stat.s0 { background:#f1f5f9; } .results-stat.s0 .stat-n { color:#94a3b8; }
+
+.results-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+.result-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border-left: 4px solid var(--border);
+}
+.result-item.r1 { border-left-color: #22c55e; }
+.result-item.r2 { border-left-color: #84cc16; }
+.result-item.r3 { border-left-color: #f59e0b; }
+.result-item.r4 { border-left-color: #f97316; }
+.result-item.r5 { border-left-color: #ef4444; }
+.result-item.r0 { border-left-color: #cbd5e1; opacity: .6; }
+.result-num  { font-size: 0.68rem; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.result-text { font-size: 0.88rem; }
+.result-text .jp { font-family: "Noto Sans JP", sans-serif; font-weight: 700; font-size: 1rem; }
+.result-text .en { font-size: 0.78rem; color: #64748b; margin-top: 2px; }
+.result-badge {
+  font-size: 0.72rem; font-weight: 700;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; color: white;
+}
+.result-badge.b1{background:#22c55e;} .result-badge.b2{background:#84cc16;}
+.result-badge.b3{background:#f59e0b;} .result-badge.b4{background:#f97316;}
+.result-badge.b5{background:#ef4444;} .result-badge.b0{background:#cbd5e1;color:#64748b;}
+
+.results-actions {
+  display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end;
+}
+.results-export-btn {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 14px;
+  font-size: 0.78rem; font-family: inherit; cursor: pointer; transition: .15s;
+}
+.results-export-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ===== CSV MANAGER MODAL ===== */
+.csv-modal {
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+.csv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.csv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  position: relative;
+}
+.csv-item-left { flex: 1; min-width: 0; }
+.csv-item-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.csv-item-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.csv-color-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.csv-color-picker label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.csv-color-btn {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform .12s, border-color .12s;
+  flex-shrink: 0;
+}
+.csv-color-btn:hover { transform: scale(1.2); }
+.csv-color-btn.selected { border-color: #475569; transform: scale(1.15); }
+.csv-del-btn {
+  background: none; border: none; cursor: pointer;
+  color: #cbd5e1; font-size: 0.85rem; padding: 4px;
+  border-radius: 6px; transition: .15s; flex-shrink: 0;
+}
+.csv-del-btn:hover { color: #ef4444; background: #fee2e2; }
+.csv-priority-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: var(--primary);
+  color: white;
+  border-radius: 6px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.csv-reorder-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.csv-reorder-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 22px; height: 18px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.6rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: .12s;
+  padding: 0;
+}
+.csv-reorder-btn:hover { border-color: var(--primary); color: var(--primary); }
+.csv-reorder-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+.csv-add-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.csv-add-btn {
+  background: var(--primary); color: white; border: none;
+  border-radius: 8px; padding: 8px 16px; font-size: 0.8rem;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px; transition: opacity .15s;
+}
+.csv-add-btn:hover { opacity: .87; }
+.csv-empty {
+  text-align: center; color: var(--muted); font-size: 0.82rem;
+  padding: 20px; line-height: 1.6;
+}
+.csv-empty i { font-size: 1.6rem; color: #c7d2fe; display: block; margin-bottom: 8px; }
+/* ===== TXT IMPORT MODAL ===== */
+.txt-modal {
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.txt-section {
+  margin-bottom: 16px;
+}
+.txt-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+.txt-terminators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.txt-terminator-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--text);
+  transition: .15s;
+  user-select: none;
+}
+.txt-terminator-btn.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+.txt-terminator-btn .t-char {
+  font-size: 1rem;
+  font-weight: 700;
+  min-width: 14px;
+  text-align: center;
+}
+.txt-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.txt-custom-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-family: inherit;
+}
+.txt-custom-input:focus { border-color: var(--primary); outline: none; }
+.txt-preview-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.txt-preview-sentence {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.txt-preview-sentence:last-child { border-bottom: none; }
+.txt-preview-num {
+  font-size: 0.65rem;
+  color: var(--muted);
+  min-width: 22px;
+  padding-top: 2px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.txt-preview-text { color: var(--text); }
+.txt-preview-empty { color: var(--muted); font-style: italic; text-align: center; padding: 12px 0; }
+.txt-action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  gap: 10px;
+}
+.txt-count-badge {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.txt-count-badge strong { color: var(--primary); }
+.txt-load-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.txt-load-btn:hover { opacity: .87; }
+.txt-load-btn:disabled { opacity: .4; cursor: default; }
+
+/* ===== DROPDOWN BUTTON ===== */
+.dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  min-width: 150px;
+  z-index: 600;
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+  padding: 4px 0;
+}
+.dropdown-menu.open { display: flex; }
+.dropdown-item {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.dropdown-item:hover { background: var(--primary-light); color: var(--primary); }
+.dropdown-item i { width: 14px; text-align: center; font-size: 0.8rem; }
+.dropdown-divider { height: 1px; background: var(--border); margin: 3px 0; }
+
+/* ================================================================
+   DARK MODE  –  X.com palette
+================================================================ */
+body.dark {
+  --primary:       #1d9bf0;
+  --primary-light: #031827;
+  --bg:            #000000;
+  --card:          #16181c;
+  --text:          #e7e9ea;
+  --muted:         #71767b;
+  --border:        #2f3336;
+}
+body.dark .header { background: rgba(0,0,0,0.88); backdrop-filter: blur(12px); border-color: #2f3336; }
+body.dark .file-btn { background: #000; }
+body.dark .file-btn.loaded { background: #0a1f10; border-color: #4ade80; color: #4ade80; }
+body.dark .lesson-card { box-shadow: 0 4px 32px rgba(0,0,0,0.6); }
+body.dark .en-text { color: #71767b; }
+body.dark rt { color: #536471; }
+body.dark .lesson-counter { color: #71767b; }
+body.dark .audio-bar { background: #16181c; box-shadow: 0 0 0 1px #2f3336, 0 24px 60px rgba(0,0,0,0.9); }
+body.dark #audioStatus { color: #1d9bf0; }
+body.dark .pmeta-btn { color: #71767b; border-color: #2f3336; background: transparent; }
+body.dark .pmeta-btn:hover { background: rgba(255,255,255,0.06); color: #e7e9ea; }
+body.dark .pmeta-btn.active { background: rgba(29,155,240,0.15); border-color: rgba(29,155,240,0.4); color: #1d9bf0; }
+body.dark .pmeta-btn.ab-active { background: rgba(251,191,36,0.15); border-color: rgba(251,191,36,0.4); color: #fbbf24; }
+body.dark .player-time { color: #536471; }
+body.dark .seek-track-inner { background: #2f3336; }
+body.dark .seek-fill { background: linear-gradient(90deg, #1d9bf0, #60b4f7); }
+body.dark .seek-fill::after { background: #e7e9ea; box-shadow: 0 0 0 3px rgba(29,155,240,0.4); }
+body.dark .pctrl-btn { color: #536471; }
+body.dark .pctrl-btn:hover { color: #e7e9ea; }
+body.dark .pctrl-skip:hover, body.dark .pctrl-replay:hover, body.dark .pctrl-autopause:hover { background: rgba(255,255,255,0.06); }
+body.dark .pctrl-play { background: linear-gradient(135deg, #1d9bf0, #60b4f7); box-shadow: 0 4px 20px rgba(29,155,240,0.45); }
+body.dark .pctrl-play:hover { box-shadow: 0 6px 28px rgba(29,155,240,0.6); }
+body.dark .pctrl-autopause.active { color: #6ee7b7; }
+body.dark #chaptersPanel { box-shadow: 0 8px 32px rgba(0,0,0,0.7); }
+body.dark .chapters-header { border-bottom-color: #2f3336; }
+body.dark .chapter-item:hover { background: #1e2328; }
+body.dark .chapter-item.active { background: #031827; }
+body.dark .add-chapter-row { border-top-color: #2f3336; }
+body.dark .add-chapter-row input { background: #000; color: #e7e9ea; }
+body.dark .add-chapter-row input::placeholder { color: #536471; }
+body.dark .empty-state h2 { color: #e7e9ea; }
+body.dark .empty-state i { color: #1d9bf0; }
+body.dark .modal { box-shadow: 0 24px 60px rgba(0,0,0,0.8); border: 1px solid #2f3336; }
+body.dark .modal-overlay { background: rgba(0,0,0,0.75); }
+body.dark .shortcut-grid kbd { color: #71767b; box-shadow: 0 1px 0 #2f3336; }
+body.dark .shortcut-grid span { color: #71767b; }
+body.dark .results-stat.s0 { background: #1e2328; } body.dark .results-stat.s0 .stat-n { color: #536471; }
+body.dark .results-stat.s1 { background: #0a2018; } body.dark .results-stat.s1 .stat-n { color: #4ade80; }
+body.dark .results-stat.s2 { background: #0e1e0a; } body.dark .results-stat.s2 .stat-n { color: #a3e635; }
+body.dark .results-stat.s3 { background: #1f1800; } body.dark .results-stat.s3 .stat-n { color: #fbbf24; }
+body.dark .results-stat.s4 { background: #1f0f00; } body.dark .results-stat.s4 .stat-n { color: #fb923c; }
+body.dark .results-stat.s5 { background: #1f0505; } body.dark .results-stat.s5 .stat-n { color: #f87171; }
+body.dark .result-text .en { color: #71767b; }
+body.dark .result-item.r0 { border-left-color: #2f3336; opacity: .5; }
+body.dark .csv-del-btn:hover { background: #1f0505; color: #f87171; }
+body.dark .csv-color-btn.selected { border-color: #e7e9ea; }
+body.dark .csv-empty i { color: #1d9bf0; }
+body.dark .txt-preview-sentence { border-bottom-color: #1e2328; }
+body.dark .dropdown-item:hover { background: #1e2328; color: #1d9bf0; }
+body.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+body.dark ::-webkit-scrollbar-track { background: #000; }
+body.dark ::-webkit-scrollbar-thumb { background: #2f3336; border-radius: 3px; }
+body.dark ::-webkit-scrollbar-thumb:hover { background: #536471; }
+
+/* Highlighted words in dark mode — use deep/rich variants */
+body.dark .hl { background: var(--hl-bg-dark, #422006) !important; }
+body.dark .hl:hover { background: var(--hl-hover-dark, #78350f) !important; }
+
+/* ===== WAVEFORM ===== */
+#waveformCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: 2px;
+  opacity: 0.55;
+}
+.seek-track-inner { position: relative; overflow: visible; }
+
+/* ===== SENTENCE NOTES ===== */
+.notes-area {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 10;
+}
+.notes-toggle-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: .15s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.notes-toggle-btn:hover { border-color: var(--primary); color: var(--primary); }
+.notes-toggle-btn.has-note { border-color: #fbbf24; color: #d97706; background: #fffbeb; }
+.notes-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.14);
+  padding: 10px;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 200;
+}
+.notes-popup.open { display: flex; }
+.notes-popup textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  resize: none;
+  height: 90px;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  transition: border-color .15s;
+}
+.notes-popup textarea:focus { border-color: var(--primary); outline: none; }
+.notes-popup-header {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.notes-char-count {
+  font-size: 0.65rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+body.dark .notes-toggle-btn.has-note { background: #1a1200; border-color: #b45309; color: #fbbf24; }
+body.dark .notes-popup textarea { background: #0d0d0d; color: var(--text); }
+
+/* ===== VOCAB STATS PANEL ===== */
+.vocab-modal {
+  width: min(600px, calc(100vw - 40px));
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+}
+.vocab-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.vocab-tab {
+  padding: 7px 16px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: .15s;
+  font-weight: 500;
+}
+.vocab-tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 700; }
+.vocab-tab:hover:not(.active) { color: var(--text); }
+.vocab-panel { display: none; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
+.vocab-panel.active { display: flex; }
+.vocab-summary-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.vocab-stat-chip {
+  flex: 1;
+  min-width: 90px;
+  background: var(--primary-light);
+  border-radius: 10px;
+  padding: 10px 14px;
+  text-align: center;
+}
+.vocab-stat-chip .vsn { font-size: 1.4rem; font-weight: 700; color: var(--primary); line-height: 1; }
+.vocab-stat-chip .vsl { font-size: 0.65rem; color: var(--muted); margin-top: 3px; }
+.vocab-word-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid transparent;
+  transition: border-color .12s;
+}
+.vocab-word-row:hover { border-color: var(--border); }
+.vocab-word-jp {
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.vocab-word-def {
+  font-size: 0.73rem;
+  color: var(--muted);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.vocab-word-color {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.vocab-count-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.vocab-count-badge.freq-high { background: #fde68a; color: #92400e; }
+.vocab-count-badge.freq-med  { background: #bae6fd; color: #075985; }
+.vocab-search {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text);
+  margin-bottom: 6px;
+  transition: border-color .15s;
+}
+.vocab-search:focus { border-color: var(--primary); outline: none; }
+.vocab-empty {
+  text-align: center;
+  padding: 28px 16px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.vocab-empty i { display: block; font-size: 2rem; margin-bottom: 8px; color: #c7d2fe; }
+.vocab-sort-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.vocab-sort-btn {
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: .12s;
+}
+.vocab-sort-btn.active { background: var(--primary-light); border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.notes-list-item {
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 10px;
+  border-left: 3px solid #fbbf24;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.notes-list-num { font-size: 0.68rem; color: var(--muted); padding-top: 1px; font-variant-numeric: tabular-nums; }
+.notes-list-jp { font-family: 'Noto Sans JP', sans-serif; font-size: 0.95rem; font-weight: 600; }
+.notes-list-note { font-size: 0.78rem; color: #92400e; margin-top: 4px; line-height: 1.5; white-space: pre-wrap; }
+body.dark .notes-list-note { color: #fbbf24; }
+body.dark .vocab-stat-chip { background: #031827; }
+body.dark .vocab-count-badge.freq-high { background: #422006; color: #fbbf24; }
+body.dark .vocab-count-badge.freq-med  { background: #0c2d48; color: #38bdf8; }
+body.dark .vocab-search { background: #0d0d0d; }
+</style>
+<body>
+
+<div class="main-area" id="mainArea">
+
+  <div class="header">
+    <span class="header-title">JP Studio</span>
+    <div class="file-group">
+
+      <!-- Upload Text dropdown -->
+      <div class="dropdown-wrap" id="uploadTextWrap">
+        <button class="file-btn" id="uploadTextBtn" onclick="toggleDropdown('uploadTextMenu', event)">
+          <i class="fa-solid fa-file-arrow-up"></i> Upload Text <i class="fa-solid fa-chevron-down" style="font-size:0.6rem;margin-left:2px;"></i>
+        </button>
+        <div class="dropdown-menu" id="uploadTextMenu">
+          <button class="dropdown-item" onclick="triggerTxtLoad(); closeDropdown('uploadTextMenu')">
+            <i class="fa-solid fa-file-lines"></i> Upload TXT
+          </button>
+          <button class="dropdown-item" id="srtDropItem" onclick="document.getElementById('srtInput').click(); closeDropdown('uploadTextMenu')">
+            <i class="fa-solid fa-closed-captioning"></i> Upload SRT
+          </button>
+        </div>
+      </div>
+      <input type="file" id="srtInput" accept=".srt,.vtt" hidden>
+      <input type="file" id="txtInput" accept=".txt" hidden>
+      <button class="file-btn" id="audioBtn" title="Load audio file" onclick="document.getElementById('audioInput').click()">
+        <i class="fa-solid fa-music"></i> Audio
+        <input type="file" id="audioInput" accept="audio/*" hidden>
+      </button>
+       <button class="file-btn" id="csvBtn" onclick="openCsvManager()" title="Manage word CSV highlight lists">
+        <i class="fa-solid fa-highlighter"></i> Words CSV
+      </button>
+      <!-- Lesson dropdown -->
+      <div class="dropdown-wrap" id="lessonWrap">
+        <button class="file-btn" id="lessonBtn" onclick="toggleDropdown('lessonMenu', event)">
+          <i class="fa-solid fa-book-open"></i> Lesson <i class="fa-solid fa-chevron-down" style="font-size:0.6rem;margin-left:2px;"></i>
+        </button>
+        <div class="dropdown-menu" id="lessonMenu">
+          <button class="dropdown-item" onclick="triggerOpenLesson(); closeDropdown('lessonMenu')">
+            <i class="fa-solid fa-folder-open"></i> Open Lesson
+          </button>
+          <div class="dropdown-divider"></div>
+          <button class="dropdown-item" id="saveLessonItem" onclick="downloadLesson(); closeDropdown('lessonMenu')">
+            <i class="fa-solid fa-floppy-disk"></i> Save Lesson
+          </button>
+        </div>
+      </div>
+      <input type="file" id="lessonInput" accept=".json" hidden>
+
+      
+     
+      
+      <button class="file-btn" id="vocabBtn" onclick="openVocabPanel()" title="Vocabulary statistics">
+        <i class="fa-solid fa-chart-simple"></i> Vocab Stats
+      </button>
+      <button class="file-btn" onclick="toggleAbout()" title="Keyboard shortcuts">
+        <i class="fa-solid fa-keyboard"></i> Shortcuts
+      </button>
+      <button class="file-btn" id="furiganaBtn" onclick="toggleFurigana()" title="Toggle furigana reading aid">
+        <i class="fa-solid fa-language"></i> Furigana
+      </button>
+      <button class="file-btn" id="darkBtn" onclick="toggleDark()" title="Toggle dark mode">
+        <i class="fa-solid fa-moon"></i>
+      </button>
+      
+    </div>
+  </div>
+
+  <div class="empty-state" id="emptyState">
+    <i class="fa-solid fa-closed-captioning"></i>
+    <h2>Load a file to begin</h2>
+    <p>Upload an <strong>SRT</strong> subtitle file, or a plain <strong>TXT</strong> file (auto-split into sentences).<br>Each entry becomes a sentence in the lesson.</p>
+  </div>
+
+  <div class="lesson-card" id="lessonCard" style="display:none;">
+    <span class="sentence-num" id="sentenceNum"></span>
+    <div class="jp-text" id="jpText"></div>
+    <div class="en-text" id="enText"></div>
+    <!-- Sentence Notes -->
+    <div class="notes-area">
+      <div style="position:relative;">
+        <button class="notes-toggle-btn" id="notesToggleBtn" onclick="toggleNotesPopup(event)">
+          <i class="fa-regular fa-note-sticky"></i> <span id="notesToggleLabel">Note</span>
+        </button>
+        <div class="notes-popup" id="notesPopup">
+          <div class="notes-popup-header">
+            <span><i class="fa-solid fa-pen-to-square" style="margin-right:5px;color:var(--primary);"></i>Sentence Note</span>
+            <span class="notes-char-count" id="notesCharCount">0 / 300</span>
+          </div>
+          <textarea id="notesTextarea" maxlength="300" placeholder="Add a note for this sentence…" oninput="onNoteInput()"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rating-strip" id="ratingStrip" style="display:none;">
+    <div class="rating-label" id="ratingLabel"></div>
+  </div>
+
+  <div class="nav-controls" id="navControls" style="display:none;">
+    <button class="btn-nav secondary" onclick="prevLine()" title="Previous (A)"><i class="fa-solid fa-chevron-left"></i></button>
+    <span class="lesson-counter" id="lessonCounter"></span>
+    <button class="btn-nav secondary" onclick="nextLine()" title="Next (D)"><i class="fa-solid fa-chevron-right"></i></button>
+  </div>
+  <button class="finish-btn" id="finishBtn" onclick="openResults()">
+    <i class="fa-solid fa-flag-checkered"></i> Finish Lesson
+  </button>
+
+</div>
+
+<div id="hlTooltip"></div>
+
+<div class="audio-bar">
+
+  <!-- Top row: file name + speed + chapters -->
+  <div class="player-top-row">
+    <span id="audioStatus">No audio loaded</span>
+    <div class="player-meta-btns">
+      <button class="pmeta-btn" id="speedBtn" onclick="cycleSpeed()" title="Playback speed">1×</button>
+      <button class="pmeta-btn" id="abBtn" onclick="abPress()" title="A-B Loop (J = set A, K = set B, L = clear)">A-B</button>
+      <button class="pmeta-btn" onclick="toggleChapters()" title="Chapters">
+        <i class="fa-solid fa-list-ul"></i> Chapters
+      </button>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="player-progress-row">
+    <span class="player-time" id="playerCurrent">0:00</span>
+    <div class="seek-track" id="seekTrack">
+      <div class="seek-track-inner">
+        <canvas id="waveformCanvas"></canvas>
+        <div class="ab-region" id="abRegion" style="display:none;"></div>
+        <div class="ab-marker a" id="abMarkerA" style="display:none;"></div>
+        <div class="ab-marker b" id="abMarkerB" style="display:none;"></div>
+        <div class="seek-fill" id="seekFill"></div>
+      </div>
+      <input class="seek-input" id="playerSeek" type="range" min="0" max="100" step="0.05" value="0"
+             oninput="onSeekDrag()" onchange="onSeekCommit()">
+    </div>
+    <span class="player-time right" id="playerTotal">0:00</span>
+  </div>
+
+  <!-- Controls row -->
+  <div class="player-controls-row">
+    <!-- Rewind 5s -->
+    <button class="pctrl-btn pctrl-skip" onclick="seekRelative(-5)" title="−5s (←)">
+      <i class="fa-solid fa-rotate-left"></i>
+      <span class="pctrl-skip-label">5</span>
+    </button>
+
+    <!-- Replay sentence -->
+    <button class="pctrl-btn pctrl-replay" onclick="replaySentence()" title="Replay sentence (R)">
+      <i class="fa-solid fa-backward-step"></i>
+    </button>
+
+    <!-- Play / Pause -->
+    <button class="pctrl-btn pctrl-play" id="playPauseBtn" onclick="togglePlayPause()" title="Play/Pause (Space)">
+      <i id="playPauseIcon" class="fa-solid fa-play"></i>
+    </button>
+
+    <!-- Auto-pause -->
+    <button class="pctrl-btn pctrl-autopause" id="autoPauseBtn" onclick="toggleAutoPause()" title="Auto-pause at sentence end">
+      <i class="fa-solid fa-stopwatch"></i>
+    </button>
+
+    <!-- Forward 5s -->
+    <button class="pctrl-btn pctrl-skip" onclick="seekRelative(5)" title="+5s (→)">
+      <i class="fa-solid fa-rotate-right"></i>
+      <span class="pctrl-skip-label">5</span>
+    </button>
+  </div>
+
+</div>
+
+<audio id="player"></audio>
+
+<div id="chaptersPanel">
+  <div class="chapters-header">
+    <span><i class="fa-solid fa-list" style="margin-right:6px;color:var(--primary);"></i>Chapters</span>
+    <i class="fa-solid fa-xmark" style="cursor:pointer;color:var(--muted);" onclick="toggleChapters()"></i>
+  </div>
+  <div class="chapters-list" id="chaptersList"></div>
+  <div class="add-chapter-row">
+    <input type="text" id="chapterName" placeholder="Chapter name…" onkeydown="if(event.key==='Enter')addChapter()">
+    <button class="add-chapter-btn" onclick="addChapter()"><i class="fa-solid fa-plus"></i> Add at current time</button>
+  </div>
+</div>
+
+<!-- TXT Import Modal -->
+<div class="modal-overlay" id="txtModal" onclick="if(event.target===this)closeTxtModal()">
+  <div class="modal txt-modal">
+    <div class="modal-title">
+      <span><i class="fa-solid fa-file-lines" style="color:var(--primary);margin-right:8px;"></i>Import Text File</span>
+      <button class="modal-close" onclick="closeTxtModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <div class="txt-section">
+      <div class="txt-section-label">Split at sentence terminators</div>
+      <div class="txt-terminators" id="txtTerminators">
+        <!-- populated by JS -->
+      </div>
+      <div class="txt-custom-row">
+        <input class="txt-custom-input" id="txtCustomChars" placeholder="Custom characters, e.g.  :" maxlength="20">
+        <span style="font-size:0.72rem;color:var(--muted);">extra chars</span>
+      </div>
+    </div>
+
+    <div class="txt-section">
+      <div class="txt-section-label">Preview <span id="txtPreviewLabel"></span></div>
+      <div class="txt-preview-box" id="txtPreviewBox">
+        <div class="txt-preview-empty">Load a file to preview sentences.</div>
+      </div>
+    </div>
+
+    <div class="txt-action-row">
+      <span class="txt-count-badge" id="txtCountBadge"></span>
+      <button class="txt-load-btn" id="txtLoadBtn" onclick="confirmTxtLoad()" disabled>
+        <i class="fa-solid fa-check"></i> Load Sentences
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- CSV Manager Modal -->
+<div class="modal-overlay" id="csvModal" onclick="if(event.target===this)closeCsvManager()">
+  <div class="modal csv-modal">
+    <div class="modal-title">
+      <span><i class="fa-solid fa-highlighter" style="color:var(--primary);margin-right:8px;"></i>Word CSV Lists</span>
+      <button class="modal-close" onclick="closeCsvManager()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="csv-list" id="csvList"></div>
+    <div class="csv-add-row">
+      <button class="csv-add-btn" onclick="triggerCsvAdd()">
+        <i class="fa-solid fa-plus"></i> Add CSV
+      </button>
+      <span style="font-size:0.72rem;color:var(--muted);">Each CSV gets its own highlight color</span>
+    </div>
+    <input type="file" id="csvAddInput" accept=".csv,.txt" hidden multiple>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ================================================================
+   1. GLOBAL STATE
+================================================================ */
+let lesson = [];
+let currentIndex = 0;
+let chapters = JSON.parse(localStorage.getItem('jp_chapters')) || [];
+let sentenceNotes = []; // parallel array to lesson
+let _lessonHasTimestamps = false; // true when SRT/JSON with real start/end times
+
+// Multi-CSV highlight system
+// csvSets: array of { id, name, color, wordMap, hlWords }
+let csvSets = [];
+
+// Preset color palette for CSVs
+const CSV_COLORS = [
+  { name: 'Yellow',     bg: '#fde68a', hover: '#fbbf24', darkBg: '#422006', darkHover: '#78350f' },
+  { name: 'Light Blue', bg: '#bae6fd', hover: '#38bdf8', darkBg: '#0c2d48', darkHover: '#075985' },
+  { name: 'Green',      bg: '#bbf7d0', hover: '#4ade80', darkBg: '#052e16', darkHover: '#14532d' },
+  { name: 'Pink',       bg: '#fbcfe8', hover: '#f472b6', darkBg: '#4a0d2e', darkHover: '#831843' },
+  { name: 'Lavender',   bg: '#ddd6fe', hover: '#a78bfa', darkBg: '#2e1065', darkHover: '#4c1d95' },
+  { name: 'Peach',      bg: '#fed7aa', hover: '#fb923c', darkBg: '#431407', darkHover: '#7c2d12' },
+];
+
+let chaptersOpen = false;
+let ratings = [];
+let isSeeking = false;
+let autoPauseEnabled = false;
+
+let abA = null;
+let abB = null;
+let abLooping = false;
+
+/* Furigana state */
+let furiganaEnabled  = false;
+let kuroshiroInst    = null;   // Kuroshiro instance
+let kuroshiroReady   = false;
+let kuroshiroLoading = false;
+const furiganaCache  = new Map(); // plain text → converted HTML
+
+const player = document.getElementById('player');
+
+/* ================================================================
+   2. STATE MANAGEMENT
+================================================================ */
+function saveChaptersState() {
+  chapters.sort((a, b) => a.time - b.time);
+  localStorage.setItem('jp_chapters', JSON.stringify(chapters));
+  renderChapters();
+}
+
+/* ================================================================
+   CSV PERSISTENCE
+================================================================ */
+function saveCsvSets() {
+  // Save metadata + word data (not File objects)
+  const toSave = csvSets.map(s => ({
+    id: s.id,
+    name: s.name,
+    colorIdx: s.colorIdx,
+    // Serialize wordMap entries
+    words: [...s.wordMap.entries()]
+  }));
+  localStorage.setItem('jp_csv_sets', JSON.stringify(toSave));
+}
+
+function loadCsvSets() {
+  try {
+    const raw = localStorage.getItem('jp_csv_sets');
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    csvSets = saved.map(s => {
+      const wordMap = new Map(s.words);
+      const hlWords = [...wordMap.keys()].sort((a, b) => b.length - a.length);
+      return { id: s.id, name: s.name, colorIdx: s.colorIdx, wordMap, hlWords };
+    });
+    updateCsvBtn();
+    renderLine();
+  } catch(e) {}
+}
+
+function updateCsvBtn() {
+  const btn = document.getElementById('csvBtn');
+  if (csvSets.length > 0) {
+    btn.classList.add('loaded');
+    btn.title = `${csvSets.length} CSV list(s) loaded`;
+  } else {
+    btn.classList.remove('loaded');
+    btn.title = 'Manage word CSV highlight lists';
+  }
+}
+
+/* ================================================================
+   3. UTILS & PARSING
+================================================================ */
+const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const escAttr = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+function fmtTime(sec) {
+  if (isNaN(sec) || sec < 0) return '0:00';
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function parseSRT(text) {
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  const blocks = text.split(/\n{2,}/);
+  const entries = [];
+
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    const tcIdx = lines.findIndex(l => l.includes('-->'));
+    if (tcIdx === -1) continue;
+
+    const [startStr, endStr] = lines[tcIdx].split('-->').map(s => s.trim().split(' ')[0]);
+    const start = parseSRTTimecode(startStr);
+    const end   = parseSRTTimecode(endStr);
+    if (isNaN(start) || isNaN(end)) continue;
+
+    const textLines = lines.slice(tcIdx + 1).join('\n').replace(/<[^>]+>/g, '').trim();
+    if (!textLines) continue;
+
+    const split = textLines.split('\n');
+    const jp = split[0].trim();
+    const en = split.length > 1 ? split.slice(1).join(' ').trim() : '';
+    entries.push({ jp, en, start, end });
+  }
+  return entries;
+}
+
+function parseSRTTimecode(s) {
+  s = s.replace(',', '.');
+  const parts = s.split(':');
+  if (parts.length !== 3) return NaN;
+  return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+}
+
+/* ================================================================
+   4. HIGHLIGHTING (multi-CSV)
+================================================================ */
+function applyHighlights(text) {
+  if (!csvSets.length) return escHtml(text);
+
+  // Build a flat match list with set index for color
+  const hits = [];
+  let i = 0;
+  while (i < text.length) {
+    let matched = false;
+    // Try each CSV set in order; first match wins (longest-first within each set)
+    for (let si = 0; si < csvSets.length; si++) {
+      const set = csvSets[si];
+      for (const w of set.hlWords) {
+        if (text.startsWith(w, i)) {
+          hits.push({ start: i, end: i + w.length, word: w, si });
+          i += w.length;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+    if (!matched) i++;
+  }
+
+  let out = '', cur = 0;
+  for (const h of hits) {
+    out += escHtml(text.slice(cur, h.start));
+    const set = csvSets[h.si];
+    const col = CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+    const { col2, col3 } = set.wordMap.get(h.word) || {};
+    const attrs = (col2 ? ` data-t2="${escAttr(col2)}"` : '') +
+                  (col3 ? ` data-t3="${escAttr(col3)}"` : '');
+    out += `<span class="hl" style="background:${col.bg};--hl-bg:${col.bg};--hl-bg-dark:${col.darkBg};--hl-hover:${col.hover};--hl-hover-dark:${col.darkHover}"${attrs}>${escHtml(text.slice(h.start, h.end))}</span>`;
+    cur = h.end;
+  }
+  return out + escHtml(text.slice(cur));
+}
+
+/* ================================================================
+   HIGHLIGHT TOOLTIP
+================================================================ */
+const hlTip = document.getElementById('hlTooltip');
+
+document.getElementById('jpText').addEventListener('mouseover', e => {
+  const span = e.target.closest('.hl');
+  if (!span) return;
+  const t2 = span.dataset.t2 || '';
+  const t3 = span.dataset.t3 || '';
+  if (!t2 && !t3) return;
+
+  hlTip.innerHTML = [t2, t3].filter(Boolean).map(escHtml).join('<br>');
+
+  const rect = span.getBoundingClientRect();
+  hlTip.style.display = 'block';
+  hlTip.style.left = `${rect.left + rect.width / 2}px`;
+  hlTip.style.top  = `${rect.top - hlTip.offsetHeight - 12}px`;
+});
+
+document.getElementById('jpText').addEventListener('mouseout', e => {
+  if (!e.relatedTarget || !e.relatedTarget.closest('.hl')) {
+    hlTip.style.display = 'none';
+  }
+});
+
+/* Pause audio while hovering the sentence, resume on leave */
+const lessonCard = document.getElementById('lessonCard');
+let pausedByHover = false;
+
+lessonCard.addEventListener('mouseenter', () => {
+  if (player.src && !player.paused) {
+    player.pause();
+    pausedByHover = true;
+  }
+});
+
+lessonCard.addEventListener('mouseleave', () => {
+  if (pausedByHover) {
+    pausedByHover = false;
+    player.play().catch(() => {}); // autoplay policy may block; ignore silently
+  }
+});
+
+/* ================================================================
+   5. CORE RENDERING
+================================================================ */
+function showLesson() {
+  document.getElementById('emptyState').style.display  = 'none';
+  document.getElementById('lessonCard').style.display  = '';
+  document.getElementById('ratingStrip').style.display = '';
+  document.getElementById('navControls').style.display = '';
+  document.getElementById('finishBtn').style.display   = '';
+}
+
+function renderLine() {
+  if (!lesson.length) return;
+  const gen = ++_furiganaGen;
+  const line = lesson[currentIndex];
+  document.getElementById('enText').innerText  = line.en;
+  document.getElementById('lessonCounter').textContent = `${currentIndex + 1} / ${lesson.length}`;
+  document.getElementById('sentenceNum').textContent   = `#${currentIndex + 1}`;
+  renderRatingDots();
+
+  const jpEl = document.getElementById('jpText');
+  if (furiganaEnabled && kuroshiroReady) {
+    renderWithFurigana(line.jp, jpEl, gen);
+  } else {
+    jpEl.innerHTML = applyHighlights(line.jp);
+  }
+
+  syncNoteState();
+  if (notesPopupOpen) {
+    notesPopupOpen = false;
+    document.getElementById('notesPopup').classList.remove('open');
+  }
+}
+
+/* ------------------------------------------------------------------
+   Furigana: convert then re-apply highlights over <ruby> markup
+   Uses a generation counter to discard stale async results if the
+   user navigated away before conversion completed.
+------------------------------------------------------------------ */
+let _furiganaGen = 0; // incremented on every renderLine call
+
+async function renderWithFurigana(text, jpEl, gen) {
+  jpEl.classList.add('furi-loading');
+
+  let rubyHtml;
+  try {
+    if (furiganaCache.has(text)) {
+      rubyHtml = furiganaCache.get(text);
+    } else {
+      rubyHtml = await kuroshiroInst.convert(text, { mode: 'furigana', to: 'hiragana' });
+      furiganaCache.set(text, rubyHtml);
+    }
+    // Discard if user moved to a different sentence while we were converting
+    if (gen !== _furiganaGen) return;
+    jpEl.innerHTML = applyHighlightsToRuby(rubyHtml);
+  } catch (err) {
+    console.error('Furigana convert error:', err);
+    if (gen !== _furiganaGen) return;
+    jpEl.innerHTML = applyHighlights(text);
+  } finally {
+    if (gen === _furiganaGen) jpEl.classList.remove('furi-loading');
+  }
+}
+
+/* Walk the ruby HTML token by token and apply CSV highlights
+   without breaking <ruby>…</ruby> structures.                   */
+function applyHighlightsToRuby(rubyHtml) {
+  if (!csvSets.length) return rubyHtml;
+
+  // Tokenise: ruby elements | plain text chars | other tags
+  const tokens = [];
+  const re = /(<ruby>[\s\S]*?<\/ruby>)|(<[^>]+>)|([^<])/g;
+  let m;
+  while ((m = re.exec(rubyHtml)) !== null) {
+    if (m[1]) {
+      // Extract base text (text before first <rt>)
+      const base = m[1].replace(/<ruby>([\s\S]*?)<rt>[\s\S]*$/, '$1').replace(/<[^>]+>/g, '');
+      tokens.push({ html: m[1], base });
+    } else if (m[2]) {
+      tokens.push({ html: m[2], base: '' });      // tag, no base char
+    } else if (m[3]) {
+      tokens.push({ html: escHtml(m[3]), base: m[3] });
+    }
+  }
+
+  const baseStr = tokens.map(t => t.base).join('');
+
+  // Greedy highlight matching on baseStr
+  const hits = [];
+  let i = 0;
+  while (i < baseStr.length) {
+    let matched = false;
+    for (let si = 0; si < csvSets.length; si++) {
+      const set = csvSets[si];
+      for (const w of set.hlWords) {
+        if (baseStr.startsWith(w, i)) {
+          hits.push({ start: i, end: i + w.length, word: w, si });
+          i += w.length;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+    if (!matched) i++;
+  }
+
+  if (!hits.length) return rubyHtml;
+
+  // Map base-char index → token index
+  const charToToken = [];
+  for (let ti = 0; ti < tokens.length; ti++) {
+    for (let b = 0; b < tokens[ti].base.length; b++) charToToken.push(ti);
+  }
+
+  let out = '';
+  let cursor = 0; // token cursor
+
+  for (const h of hits) {
+    const tStart = charToToken[h.start];
+    const tEnd   = charToToken[h.end - 1];
+
+    // Skip hits whose token range was already consumed by a previous hit
+    // (happens when multiple short CSV words map to the same multi-char ruby element)
+    if (tEnd < cursor) continue;
+
+    const set = csvSets[h.si];
+    const col = CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+    const { col2, col3 } = set.wordMap.get(h.word) || {};
+    const attrs = (col2 ? ` data-t2="${escAttr(col2)}"` : '') +
+                  (col3 ? ` data-t3="${escAttr(col3)}"` : '');
+
+    // Output tokens before this hit (start from cursor, not tStart, to avoid re-emitting)
+    const spanStart = Math.max(tStart, cursor);
+    for (let ti = cursor; ti < spanStart; ti++) out += tokens[ti].html;
+    out += `<span class="hl" style="background:${col.bg};--hl-bg:${col.bg};--hl-bg-dark:${col.darkBg};--hl-hover:${col.hover};--hl-hover-dark:${col.darkHover}"${attrs}>`;
+    for (let ti = spanStart; ti <= tEnd; ti++) out += tokens[ti].html;
+    out += '</span>';
+    cursor = tEnd + 1;
+  }
+  for (let ti = cursor; ti < tokens.length; ti++) out += tokens[ti].html;
+  return out;
+}
+
+/* ------------------------------------------------------------------
+   Furigana toggle & Kuroshiro initialisation
+------------------------------------------------------------------ */
+function toggleFurigana() {
+  if (kuroshiroLoading) return;
+
+  furiganaEnabled = !furiganaEnabled;
+  const btn = document.getElementById('furiganaBtn');
+  btn.classList.toggle('loaded', furiganaEnabled);
+
+  if (furiganaEnabled && !kuroshiroReady) {
+    initKuroshiro();
+  } else {
+    renderLine();
+  }
+}
+
+async function initKuroshiro() {
+  kuroshiroLoading = true;
+  const btn = document.getElementById('furiganaBtn');
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading…';
+  btn.disabled = true;
+
+  try {
+    /* Kuroshiro 1.x exposes itself as window.Kuroshiro (default export).
+       The analyzer is window.KuromojiAnalyzer.                           */
+    const KuroshiroCtor  = window.Kuroshiro  && (window.Kuroshiro.default  || window.Kuroshiro);
+    const AnalyzerCtor   = window.KuromojiAnalyzer && (window.KuromojiAnalyzer.default || window.KuromojiAnalyzer);
+
+    if (!KuroshiroCtor || !AnalyzerCtor) {
+      throw new Error('Kuroshiro or KuromojiAnalyzer not found on window. Check CDN.');
+    }
+
+    kuroshiroInst = new KuroshiroCtor();
+    await kuroshiroInst.init(new AnalyzerCtor({
+      dictPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict'
+    }));
+
+    kuroshiroReady   = true;
+    kuroshiroLoading = false;
+    btn.innerHTML = '<i class="fa-solid fa-language"></i> Furigana';
+    btn.disabled  = false;
+    btn.classList.add('loaded');
+    renderLine();
+  } catch (err) {
+    console.error('Kuroshiro init failed:', err);
+    furiganaEnabled  = false;
+    kuroshiroLoading = false;
+    btn.innerHTML = '<i class="fa-solid fa-language"></i> Furigana';
+    btn.disabled  = false;
+    btn.classList.remove('loaded');
+    btn.title = 'Furigana failed to load — check console for details';
+  }
+}
+
+const RATING_LABELS = ['', 'Easy', 'Pretty easy', 'OK', 'Difficult', 'Very difficult'];
+const RATING_COLORS = ['','#22c55e','#84cc16','#f59e0b','#f97316','#ef4444'];
+
+function renderRatingDots() {
+  const r = ratings[currentIndex];
+  const lbl = document.getElementById('ratingLabel');
+  lbl.textContent = r ? RATING_LABELS[r] : '';
+  lbl.style.color  = r ? RATING_COLORS[r] : '';
+  // Tint card left border with rating color
+  const card = document.getElementById('lessonCard');
+  card.style.borderLeft = r ? `4px solid ${RATING_COLORS[r]}` : '';
+  card.style.paddingLeft = r ? '40px' : '';
+}
+
+function rateSentence(r) {
+  if (!lesson.length) return;
+  // Toggle off if same rating clicked again
+  ratings[currentIndex] = ratings[currentIndex] === r ? null : r;
+  renderRatingDots();
+  // Auto-advance after a brief moment so user sees the dot fill
+  if (ratings[currentIndex] !== null) {
+    setTimeout(() => {
+      if (currentIndex < lesson.length - 1) nextLine();
+    }, 320);
+  }
+}
+
+function seekToCurrentSentence() {
+  if (!lesson.length || !player.src || !_lessonHasTimestamps) return;
+  const s = lesson[currentIndex];
+  if (s.start > 0) player.currentTime = s.start;
+}
+
+function nextLine() {
+  if (currentIndex < lesson.length - 1) { 
+    currentIndex++; 
+    renderLine();
+    seekToCurrentSentence();
+  }
+}
+function prevLine() {
+  if (currentIndex > 0) { 
+    currentIndex--; 
+    renderLine();
+    seekToCurrentSentence();
+  }
+}
+
+/* ================================================================
+   6. FILE IMPORTS
+================================================================ */
+document.getElementById('srtInput').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    const parsed = parseSRT(ev.target.result);
+    if (!parsed.length) { alert('No subtitle entries found.'); return; }
+    lesson = parsed;
+    currentIndex = 0;
+    ratings = new Array(parsed.length).fill(null);
+    sentenceNotes = new Array(parsed.length).fill('');
+    _lessonHasTimestamps = parsed.some(l => l.start > 0);
+    showLesson();
+    renderLine();
+    document.getElementById('uploadTextBtn').classList.add('loaded');
+    document.getElementById('uploadTextBtn').title = `${parsed.length} sentences loaded (SRT)`;
+  };
+  r.readAsText(file); this.value = '';
+});
+
+document.getElementById('audioInput').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  player.src = URL.createObjectURL(file);
+  const name = file.name.length > 20 ? file.name.slice(0, 18) + '…' : file.name;
+  document.getElementById('audioStatus').innerText = name;
+  document.getElementById('audioBtn').classList.add('loaded');
+  // Generate waveform
+  generateWaveform(file);
+});
+
+/* ================================================================
+   WAVEFORM VISUALIZATION
+================================================================ */
+let waveformData = null;
+
+async function generateWaveform(file) {
+  const canvas = document.getElementById('waveformCanvas');
+  const ctx = canvas.getContext('2d');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    audioCtx.close();
+
+    // Downsample to track width
+    const trackW = document.getElementById('seekTrack').clientWidth || 400;
+    const samples = Math.min(trackW * 2, 1200);
+    const data = audioBuffer.getChannelData(0);
+    const blockSize = Math.floor(data.length / samples);
+    const peaks = new Float32Array(samples);
+    let maxPeak = 0;
+    for (let i = 0; i < samples; i++) {
+      let sum = 0;
+      for (let j = 0; j < blockSize; j++) {
+        sum += Math.abs(data[i * blockSize + j]);
+      }
+      peaks[i] = sum / blockSize;
+      if (peaks[i] > maxPeak) maxPeak = peaks[i];
+    }
+    // Normalize
+    if (maxPeak > 0) for (let i = 0; i < samples; i++) peaks[i] /= maxPeak;
+    waveformData = peaks;
+    drawWaveform();
+  } catch(err) {
+    console.warn('Waveform generation failed:', err);
+  }
+}
+
+function drawWaveform() {
+  const canvas = document.getElementById('waveformCanvas');
+  if (!canvas || !waveformData) return;
+  const trackInner = canvas.parentElement;
+  const W = trackInner.clientWidth  || 400;
+  const H = trackInner.clientHeight || 4;
+
+  // Only resize when dimensions actually change — resizing clears canvas and is expensive
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width  = W;
+    canvas.height = H;
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const isDark       = document.body.classList.contains('dark');
+  const progress     = player.duration ? player.currentTime / player.duration : 0;
+  const splitIdx     = Math.floor(progress * waveformData.length);
+  const barW         = W / waveformData.length;
+  const playedColor  = isDark ? 'rgba(29,155,240,0.85)' : 'rgba(99,102,241,0.85)';
+  const unplayedColor= isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)';
+
+  for (let i = 0; i < waveformData.length; i++) {
+    const barH = Math.max(1, waveformData[i] * H);
+    ctx.fillStyle = i < splitIdx ? playedColor : unplayedColor;
+    ctx.fillRect(i * barW, (H - barH) / 2, Math.max(barW - 0.5, 0.5), barH);
+  }
+}
+
+// Keep waveform correctly sized on window/player resize
+if (window.ResizeObserver) {
+  new ResizeObserver(() => { if (waveformData) drawWaveform(); })
+    .observe(document.getElementById('seekTrack'));
+}
+
+// Redraw on dark mode toggle - handled inside toggleDark()
+
+
+/* ================================================================
+   TXT IMPORT
+================================================================ */
+const TXT_TERMINATORS = [
+  { char: '.', label: 'Period' },
+  { char: '!', label: 'Exclamation' },
+  { char: '?', label: 'Question' },
+  { char: '。', label: 'JP Period' },
+  { char: '？', label: 'JP Question' },
+  { char: '！', label: 'JP Exclamation' },
+  { char: '…', label: 'Ellipsis' },
+  { char: '\n', label: 'Newline' },
+];
+
+// All on by default except newline
+let txtActiveTerminators = new Set(['.','!','?','。','？','！','…']);
+let txtRawText = '';
+let txtSentences = [];
+
+function triggerTxtLoad() {
+  document.getElementById('txtInput').click();
+}
+
+document.getElementById('txtInput').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    txtRawText = ev.target.result;
+    openTxtModal();
+  };
+  r.readAsText(file, 'UTF-8');
+  this.value = '';
+});
+
+function openTxtModal() {
+  renderTerminatorBtns();
+  updateTxtPreview();
+  document.getElementById('txtModal').classList.add('open');
+}
+
+function closeTxtModal() {
+  document.getElementById('txtModal').classList.remove('open');
+}
+
+function renderTerminatorBtns() {
+  const container = document.getElementById('txtTerminators');
+  container.innerHTML = '';
+  TXT_TERMINATORS.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'txt-terminator-btn' + (txtActiveTerminators.has(t.char) ? ' active' : '');
+    btn.innerHTML = `<span class="t-char">${t.char === '\n' ? '↵' : escHtml(t.char)}</span><span>${escHtml(t.label)}</span>`;
+    btn.onclick = () => {
+      if (txtActiveTerminators.has(t.char)) txtActiveTerminators.delete(t.char);
+      else txtActiveTerminators.add(t.char);
+      renderTerminatorBtns();
+      updateTxtPreview();
+    };
+    container.appendChild(btn);
+  });
+
+  // Update preview whenever custom chars change
+  document.getElementById('txtCustomChars').oninput = updateTxtPreview;
+}
+
+function parseTxtSentences(text) {
+  // Build the set of terminator chars (active + custom)
+  const custom = document.getElementById('txtCustomChars').value || '';
+  const allTerms = new Set([...txtActiveTerminators, ...custom]);
+  if (!allTerms.size) return [text.trim()].filter(Boolean);
+
+  // Build a regex that splits after any terminator char (keeps the terminator)
+  const escaped = [...allTerms].map(c => {
+    if (c === '\n') return '\\n';
+    return c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }).join('');
+
+  const re = new RegExp(`([${escaped}]+)`, 'g');
+  const parts = text.replace(re, '$1\x00').split('\x00');
+
+  return parts
+    .map(s => s.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(s => s.length > 0);
+}
+
+function updateTxtPreview() {
+  if (!txtRawText) return;
+  txtSentences = parseTxtSentences(txtRawText);
+
+  const box = document.getElementById('txtPreviewBox');
+  const badge = document.getElementById('txtCountBadge');
+  const label = document.getElementById('txtPreviewLabel');
+  const loadBtn = document.getElementById('txtLoadBtn');
+
+  label.textContent = `(${txtSentences.length} sentence${txtSentences.length !== 1 ? 's' : ''})`;
+
+  if (!txtSentences.length) {
+    box.innerHTML = '<div class="txt-preview-empty">No sentences found with current settings.</div>';
+    badge.innerHTML = '';
+    loadBtn.disabled = true;
+    return;
+  }
+
+  // Show up to 50 sentences in preview
+  const preview = txtSentences.slice(0, 50);
+  box.innerHTML = preview.map((s, i) =>
+    `<div class="txt-preview-sentence">
+      <span class="txt-preview-num">#${i + 1}</span>
+      <span class="txt-preview-text">${escHtml(s)}</span>
+    </div>`
+  ).join('') + (txtSentences.length > 50 ? `<div class="txt-preview-empty">… and ${txtSentences.length - 50} more</div>` : '');
+
+  badge.innerHTML = `<strong>${txtSentences.length}</strong> sentence${txtSentences.length !== 1 ? 's' : ''} ready`;
+  loadBtn.disabled = false;
+}
+
+function confirmTxtLoad() {
+  if (!txtSentences.length) return;
+  lesson = txtSentences.map(s => ({ jp: s, en: '', start: 0, end: 0 }));
+  currentIndex = 0;
+  ratings = new Array(lesson.length).fill(null);
+  sentenceNotes = new Array(lesson.length).fill('');
+  _lessonHasTimestamps = false;
+  showLesson();
+  renderLine();
+  document.getElementById('uploadTextBtn').classList.add('loaded');
+  document.getElementById('uploadTextBtn').title = `${lesson.length} sentences loaded (TXT)`;
+  closeTxtModal();
+}
+
+document.getElementById('csvAddInput').addEventListener('change', function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  let loaded = 0;
+  files.forEach(file => {
+    const r = new FileReader();
+    r.onload = ev => {
+      const wordMap = new Map();
+      const lines = ev.target.result.split(/\r?\n/);
+      for (const line of lines) {
+        const cols = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+        const word = (cols[0] || '').replace(/^"|"$/g, '').trim();
+        const col2 = (cols[1] || '').replace(/^"|"$/g, '').trim();
+        const col3 = (cols[2] || '').replace(/^"|"$/g, '').trim();
+        if (word) wordMap.set(word, { col2, col3 });
+      }
+      const hlWords = [...wordMap.keys()].sort((a, b) => b.length - a.length);
+      const id = Date.now() + Math.random();
+      // Pick next unused color
+      const usedColors = new Set(csvSets.map(s => s.colorIdx));
+      let colorIdx = 0;
+      while (usedColors.has(colorIdx) && colorIdx < CSV_COLORS.length) colorIdx++;
+      if (colorIdx >= CSV_COLORS.length) colorIdx = csvSets.length % CSV_COLORS.length;
+
+      csvSets.push({ id, name: file.name, colorIdx, wordMap, hlWords });
+      loaded++;
+      if (loaded === files.length) {
+        saveCsvSets();
+        updateCsvBtn();
+        renderCsvList();
+        renderLine();
+      }
+    };
+    r.readAsText(file, 'UTF-8');
+  });
+  this.value = '';
+});
+
+/* ================================================================
+   CSV MANAGER UI
+================================================================ */
+function openCsvManager() {
+  renderCsvList();
+  document.getElementById('csvModal').classList.add('open');
+}
+function closeCsvManager() {
+  document.getElementById('csvModal').classList.remove('open');
+}
+function triggerCsvAdd() {
+  document.getElementById('csvAddInput').click();
+}
+
+function renderCsvList() {
+  const container = document.getElementById('csvList');
+  if (!csvSets.length) {
+    container.innerHTML = `<div class="csv-empty"><i class="fa-solid fa-highlighter"></i>No CSV lists loaded yet.<br>Click <strong>Add CSV</strong> to load one.</div>`;
+    return;
+  }
+  container.innerHTML = '';
+  csvSets.forEach((set, idx) => {
+    const col = CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+    const item = document.createElement('div');
+    item.className = 'csv-item';
+    item.innerHTML = `
+      <div class="csv-reorder-btns">
+        <button class="csv-reorder-btn" onclick="moveCsvSet(${idx}, -1)" title="Higher priority" ${idx === 0 ? 'disabled' : ''}><i class="fa-solid fa-chevron-up"></i></button>
+        <button class="csv-reorder-btn" onclick="moveCsvSet(${idx}, 1)" title="Lower priority" ${idx === csvSets.length - 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-down"></i></button>
+      </div>
+      <span class="csv-priority-badge">P${idx + 1}</span>
+      <div class="csv-item-left">
+        <div class="csv-item-name">${escHtml(set.name)}</div>
+        <div class="csv-item-meta">${set.wordMap.size} words &nbsp;·&nbsp; 
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col.bg};border:1px solid #ccc;vertical-align:middle;"></span>
+          ${escHtml(col.name)}
+        </div>
+      </div>
+      <div class="csv-color-picker">
+        <label>Color:</label>
+        ${CSV_COLORS.map((c, ci) => `
+          <button class="csv-color-btn ${set.colorIdx === ci ? 'selected' : ''}"
+            style="background:${c.bg}"
+            title="${c.name}"
+            onclick="setCsvColor(${idx}, ${ci})"></button>
+        `).join('')}
+      </div>
+      <button class="csv-del-btn" onclick="deleteCsvSet(${idx})" title="Remove this CSV"><i class="fa-solid fa-trash"></i></button>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function setCsvColor(idx, colorIdx) {
+  csvSets[idx].colorIdx = colorIdx;
+  saveCsvSets();
+  renderCsvList();
+  renderLine();
+}
+
+function deleteCsvSet(idx) {
+  csvSets.splice(idx, 1);
+  saveCsvSets();
+  updateCsvBtn();
+  renderCsvList();
+  renderLine();
+}
+
+function moveCsvSet(idx, dir) {
+  const target = idx + dir;
+  if (target < 0 || target >= csvSets.length) return;
+  [csvSets[idx], csvSets[target]] = [csvSets[target], csvSets[idx]];
+  saveCsvSets();
+  renderCsvList();
+  renderLine();
+}
+
+/* ================================================================
+   9. PLAYER LOGIC
+================================================================ */
+const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+let speedIdx = 2; // default 1×
+
+function cycleSpeed() {
+  speedIdx = (speedIdx + 1) % speeds.length;
+  const s = speeds[speedIdx];
+  player.playbackRate = s;
+  document.getElementById('speedBtn').textContent = s === 1 ? '1×' : `${s}×`;
+}
+
+/* ----------------------------------------------------------------
+   A-B LOOP
+   J = set/reset A point
+   K = set B point (only after A is set)
+   L = clear loop
+---------------------------------------------------------------- */
+function abSetA() {
+  if (!player.src) return;
+  abA = player.currentTime;
+  abB = null;
+  abLooping = false;
+  renderAbOverlay();
+}
+
+function abSetB() {
+  if (!player.src || abA === null) return;
+  const t = player.currentTime;
+  if (t <= abA) return; // B must be after A
+  abB = t;
+  abLooping = true;
+  renderAbOverlay();
+}
+
+function abClear() {
+  abA = null; abB = null; abLooping = false;
+  renderAbOverlay();
+}
+
+// Cycles: no loop → set A → set B → clear
+function abPress() {
+  if (abA === null)       abSetA();
+  else if (abB === null)  abSetB();
+  else                    abClear();
+}
+
+function renderAbOverlay() {
+  const btn     = document.getElementById('abBtn');
+  const region  = document.getElementById('abRegion');
+  const markerA = document.getElementById('abMarkerA');
+  const markerB = document.getElementById('abMarkerB');
+
+  if (abA === null) {
+    region.style.display  = 'none';
+    markerA.style.display = 'none';
+    markerB.style.display = 'none';
+    btn.classList.remove('ab-active');
+    btn.textContent = 'A-B';
+    return;
+  }
+
+  const dur = player.duration || 1;
+  const pctA = (abA / dur) * 100;
+
+  markerA.style.display = '';
+  markerA.style.left = pctA + '%';
+
+  if (abB !== null) {
+    const pctB = (abB / dur) * 100;
+    markerB.style.display = '';
+    markerB.style.left = pctB + '%';
+    region.style.display = '';
+    region.style.left  = pctA + '%';
+    region.style.width = (pctB - pctA) + '%';
+    btn.classList.add('ab-active');
+    btn.textContent = 'A-B ✓';
+  } else {
+    markerB.style.display = 'none';
+    region.style.display  = 'none';
+    btn.classList.add('ab-active');
+    btn.textContent = 'A-…';
+  }
+}
+
+/* ----------------------------------------------------------------
+   DOWNLOAD LESSON JSON
+---------------------------------------------------------------- */
+function downloadLesson() {
+  const labels = ['','Easy','Pretty easy','OK','Difficult','Very difficult'];
+  const data = lesson.map((line, i) => {
+    const r = ratings[i];
+    return {
+      index:       i + 1,
+      japanese:    line.jp,
+      english:     line.en || '',
+      start:       line.start,
+      end:         line.end,
+      rating:      r || null,
+      ratingLabel: r ? labels[r] : null,
+      note:        sentenceNotes[i] || null,
+    };
+  });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  Object.assign(document.createElement('a'),
+    { href: URL.createObjectURL(blob), download: 'lesson.json' }).click();
+}
+
+function replaySentence() {
+  if (!lesson.length || !player.src) return;
+  const s = lesson[currentIndex];
+  player.currentTime = s.start;
+  player.play();
+}
+
+function togglePlayPause() {
+  if (!player.src) return;
+  player.paused ? player.play() : player.pause();
+}
+
+function toggleAutoPause() {
+  autoPauseEnabled = !autoPauseEnabled;
+  document.getElementById('autoPauseBtn').classList.toggle('active', autoPauseEnabled);
+}
+
+function seekRelative(s) {
+  if (!player.src) return;
+  player.currentTime = Math.max(0, Math.min(player.currentTime + s, player.duration || 0));
+}
+
+function onSeekDrag() {
+  isSeeking = true;
+  const pct = parseFloat(document.getElementById('playerSeek').value) / 100;
+  if (player.duration) {
+    document.getElementById('playerCurrent').textContent = fmtTime(pct * player.duration);
+    document.getElementById('seekFill').style.width = (pct * 100) + '%';
+  }
+}
+
+function onSeekCommit() {
+  const pct = parseFloat(document.getElementById('playerSeek').value) / 100;
+  if (player.duration) player.currentTime = pct * player.duration;
+  isSeeking = false;
+}
+
+function updateSeekFill(pct) {
+  document.getElementById('seekFill').style.width = (pct * 100) + '%';
+}
+
+player.addEventListener('play',  () => { document.getElementById('playPauseIcon').className = 'fa-solid fa-pause'; });
+player.addEventListener('pause', () => { document.getElementById('playPauseIcon').className = 'fa-solid fa-play'; });
+player.addEventListener('ended', () => { document.getElementById('playPauseIcon').className = 'fa-solid fa-play'; });
+player.addEventListener('loadedmetadata', () => {
+  document.getElementById('playerTotal').textContent = fmtTime(player.duration);
+});
+
+player.addEventListener('timeupdate', () => {
+  if (chaptersOpen) renderChapters();
+
+  const t   = player.currentTime;
+  const dur = player.duration;
+
+  if (!isSeeking && dur) {
+    const pct = t / dur;
+    document.getElementById('playerSeek').value = pct * 100;
+    document.getElementById('playerCurrent').textContent = fmtTime(t);
+    updateSeekFill(pct);
+  }
+
+  // A-B Loop enforcement
+  if (abLooping && abA !== null && abB !== null && !player.paused) {
+    if (t >= abB || t < abA) {
+      player.currentTime = abA;
+      return;
+    }
+  }
+
+  // Auto-Sync: only when lesson has real timestamps (start > 0 on any entry)
+  if (!player.paused && lesson.length && _lessonHasTimestamps) {
+    const cur = lesson[currentIndex];
+
+    // Auto-pause at sentence end
+    if (autoPauseEnabled && cur.end > 0 && t >= cur.end) {
+      player.pause();
+      return;
+    }
+
+    // Sentence tracking: advance/retreat if playhead is outside current sentence
+    if (t < cur.start || (cur.end > 0 && t > cur.end)) {
+      // Binary-search friendly: scan for matching window
+      const idx = lesson.findIndex(l => l.start > 0 && t >= l.start && t <= l.end);
+      if (idx !== -1 && idx !== currentIndex) {
+        currentIndex = idx;
+        renderLine();
+      }
+    }
+  }
+
+  // Waveform — drawn here (single listener, not duplicated)
+  if (waveformData) drawWaveform();
+});
+
+/* ================================================================
+   10. KEYBOARD & CHAPTERS
+================================================================ */
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  switch (e.key) {
+    case 'd': case 'D': nextLine(); break;
+    case 'a': case 'A': prevLine(); break;
+    case 'r': case 'R': replaySentence(); break;
+    case 'ArrowRight': seekRelative(5);  break;
+    case 'ArrowLeft':  seekRelative(-5); break;
+    case ' ': e.preventDefault(); togglePlayPause(); break;
+    case 'j': case 'J': abSetA(); break;
+    case 'k': case 'K': abSetB(); break;
+    case 'l': case 'L': abClear(); break;
+    case '1': case '2': case '3': case '4': case '5':
+      if (lesson.length) rateSentence(parseInt(e.key));
+      break;
+    case 'Escape': {
+      ['aboutModal','resultsModal','vocabModal','csvModal','txtModal'].forEach(id => {
+        document.getElementById(id).classList.remove('open');
+      });
+      break;
+    }
+  }
+});
+
+function activeChapterIdx() {
+  const t = player.currentTime;
+  let idx = -1;
+  for (let i = chapters.length - 1; i >= 0; i--) { if (t >= chapters[i].time) { idx = i; break; } }
+  return idx;
+}
+
+function renderChapters() {
+  const list = document.getElementById('chaptersList');
+  if (!chapters.length) { 
+    list.innerHTML = '<div class="chapters-empty">No chapters yet.<br>Play audio then click <strong>Add at current time</strong>.</div>'; 
+    return; 
+  }
+  const ai = activeChapterIdx();
+  list.innerHTML = '';
+  chapters.forEach((ch, i) => {
+    const d = document.createElement('div');
+    d.className = 'chapter-item' + (i === ai ? ' active' : '');
+    d.innerHTML = `<span class="chapter-time">${fmtTime(ch.time)}</span><span style="flex:1">${escHtml(ch.name)}</span><i class="fa-solid fa-xmark ch-del" onclick="delChapter(${i},event)"></i>`;
+    d.addEventListener('click', () => { player.currentTime = ch.time; player.play(); renderChapters(); });
+    list.appendChild(d);
+  });
+}
+
+function addChapter() {
+  const inp  = document.getElementById('chapterName');
+  const name = inp.value.trim() || `Chapter ${chapters.length + 1}`;
+  chapters.push({ name, time: player.currentTime || 0 });
+  saveChaptersState(); inp.value = '';
+}
+
+function delChapter(i, e) { 
+  e.stopPropagation(); 
+  chapters.splice(i, 1); 
+  saveChaptersState(); 
+}
+
+function toggleChapters() {
+  chaptersOpen = !chaptersOpen;
+  document.getElementById('chaptersPanel').classList.toggle('open', chaptersOpen);
+  if (chaptersOpen) renderChapters();
+}
+
+/* ================================================================
+   RESULTS MODAL
+================================================================ */
+function openResults() {
+  const rated   = ratings.filter(r => r !== null).length;
+  const total   = lesson.length;
+  const counts  = [0,0,0,0,0,0]; // index 1-5, 0=unrated
+  ratings.forEach(r => { counts[r === null ? 0 : r]++; });
+
+  // Summary stats
+  const statLabels = ['Unrated','Easy','Pretty easy','OK','Difficult','Very difficult'];
+  const statCls    = ['s0','s1','s2','s3','s4','s5'];
+  let summaryHtml  = '';
+  for (let i = 1; i <= 5; i++) {
+    summaryHtml += `<div class="results-stat ${statCls[i]}">
+      <div class="stat-n">${counts[i]}</div>
+      <div class="stat-lbl">${statLabels[i]}</div>
+    </div>`;
+  }
+  if (counts[0]) {
+    summaryHtml += `<div class="results-stat s0">
+      <div class="stat-n">${counts[0]}</div>
+      <div class="stat-lbl">Unrated</div>
+    </div>`;
+  }
+
+  // Sentence list
+  let listHtml = '';
+  lesson.forEach((line, i) => {
+    const r   = ratings[i];
+    const cls = r ? `r${r}` : 'r0';
+    const badge = r
+      ? `<div class="result-badge b${r}">${r}</div>`
+      : `<div class="result-badge b0">–</div>`;
+    listHtml += `<div class="result-item ${cls}">
+      <span class="result-num">#${i+1}</span>
+      <div class="result-text">
+        <div class="jp">${escHtml(line.jp)}</div>
+        ${line.en ? `<div class="en">${escHtml(line.en)}</div>` : ''}
+      </div>
+      ${badge}
+    </div>`;
+  });
+
+  document.getElementById('resultsSummary').innerHTML = summaryHtml;
+  document.getElementById('resultsList').innerHTML    = listHtml;
+  document.getElementById('resultsTitle').textContent =
+    `Results — ${rated}/${total} rated`;
+  document.getElementById('resultsModal').classList.add('open');
+}
+
+function closeResults() {
+  document.getElementById('resultsModal').classList.remove('open');
+}
+
+function exportResults() {
+  let csv = 'Sentence,Japanese,English,Rating,Label\n';
+  const labels = ['','Easy','Pretty easy','OK','Difficult','Very difficult'];
+  lesson.forEach((line, i) => {
+    const r   = ratings[i] || '';
+    const lbl = ratings[i] ? labels[ratings[i]] : 'Unrated';
+    const jp  = '"' + line.jp.replace(/"/g,'""') + '"';
+    const en  = '"' + (line.en||'').replace(/"/g,'""') + '"';
+    csv += `${i+1},${jp},${en},${r},${lbl}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  Object.assign(document.createElement('a'),
+    { href: URL.createObjectURL(blob), download: 'lesson-results.csv' }).click();
+}
+
+/* ================================================================
+   ABOUT / SHORTCUTS MODAL
+================================================================ */
+function toggleAbout() {
+  document.getElementById('aboutModal').classList.toggle('open');
+}
+function closeAboutOnBg(e) {
+  if (e.target === document.getElementById('aboutModal')) toggleAbout();
+}
+
+/* ================================================================
+   10. INIT
+================================================================ */
+/* ================================================================
+   DROPDOWN MENUS
+================================================================ */
+function toggleDropdown(id, e) {
+  e && e.stopPropagation();
+  const menu = document.getElementById(id);
+  const isOpen = menu.classList.contains('open');
+  // Close all dropdowns first
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('open'));
+  if (!isOpen) menu.classList.add('open');
+}
+
+function closeDropdown(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', () => {
+  document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('open'));
+});
+
+/* ================================================================
+   OPEN LESSON (JSON)
+================================================================ */
+function triggerOpenLesson() {
+  document.getElementById('lessonInput').click();
+}
+
+document.getElementById('lessonInput').addEventListener('change', function(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data) || !data.length) { alert('Invalid lesson JSON.'); return; }
+      lesson = data.map(d => ({
+        jp:    d.japanese || d.jp || '',
+        en:    d.english  || d.en || '',
+        start: d.start || 0,
+        end:   d.end   || 0,
+      }));
+      ratings = data.map(d => d.rating || null);
+      sentenceNotes = data.map(d => d.note || '');
+      _lessonHasTimestamps = lesson.some(l => l.start > 0);
+      currentIndex = 0;
+      showLesson();
+      renderLine();
+      document.getElementById('lessonBtn').classList.add('loaded');
+      document.getElementById('lessonBtn').title = `${lesson.length} sentences loaded`;
+    } catch(err) {
+      alert('Could not parse JSON: ' + err.message);
+    }
+  };
+  r.readAsText(file, 'UTF-8');
+  this.value = '';
+});
+
+loadCsvSets();
+
+/* ================================================================
+   SENTENCE NOTES
+================================================================ */
+let notesPopupOpen = false;
+
+function syncNoteState() {
+  if (!lesson.length) return;
+  const note = sentenceNotes[currentIndex] || '';
+  const ta = document.getElementById('notesTextarea');
+  const lbl = document.getElementById('notesToggleLabel');
+  const btn = document.getElementById('notesToggleBtn');
+  const cc  = document.getElementById('notesCharCount');
+  ta.value = note;
+  cc.textContent = `${note.length} / 300`;
+  btn.classList.toggle('has-note', note.length > 0);
+  lbl.textContent = note.length > 0 ? 'Note ✦' : 'Note';
+}
+
+function toggleNotesPopup(e) {
+  e && e.stopPropagation();
+  notesPopupOpen = !notesPopupOpen;
+  const popup = document.getElementById('notesPopup');
+  popup.classList.toggle('open', notesPopupOpen);
+  if (notesPopupOpen) {
+    syncNoteState();
+    setTimeout(() => document.getElementById('notesTextarea').focus(), 50);
+  }
+}
+
+function onNoteInput() {
+  if (!lesson.length) return;
+  const val = document.getElementById('notesTextarea').value;
+  sentenceNotes[currentIndex] = val;
+  document.getElementById('notesCharCount').textContent = `${val.length} / 300`;
+  const btn = document.getElementById('notesToggleBtn');
+  const lbl = document.getElementById('notesToggleLabel');
+  btn.classList.toggle('has-note', val.length > 0);
+  lbl.textContent = val.length > 0 ? 'Note ✦' : 'Note';
+}
+
+// Close notes popup when clicking outside
+document.addEventListener('click', e => {
+  if (notesPopupOpen && !e.target.closest('.notes-area')) {
+    notesPopupOpen = false;
+    document.getElementById('notesPopup').classList.remove('open');
+  }
+});
+
+/* ================================================================
+   VOCAB STATS PANEL
+================================================================ */
+let vocabSort = 'freq';
+let vocabActiveTab = 'words';
+
+function openVocabPanel() {
+  buildVocabStats();
+  document.getElementById('vocabModal').classList.add('open');
+}
+function closeVocabPanel() {
+  document.getElementById('vocabModal').classList.remove('open');
+}
+function switchVocabTab(tab) {
+  vocabActiveTab = tab;
+  document.querySelectorAll('.vocab-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.vocab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('vtab-' + tab).classList.add('active');
+  document.getElementById('vpanel-' + tab).classList.add('active');
+  if (tab === 'words') renderVocabWords();
+  if (tab === 'notes') renderVocabNotes();
+}
+function setVocabSort(s) {
+  vocabSort = s;
+  document.querySelectorAll('.vocab-sort-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('vsort-' + s).classList.add('active');
+  renderVocabWords();
+}
+
+// Build a stats object: word → { count, si, col2, col3 }
+function buildVocabStats() {
+  const wordFreq = new Map(); // word → { count, si }
+  for (const line of lesson) {
+    const text = line.jp;
+    for (let si = 0; si < csvSets.length; si++) {
+      const set = csvSets[si];
+      for (const w of set.hlWords) {
+        if (text.includes(w)) {
+          const existing = wordFreq.get(w);
+          if (existing) existing.count++;
+          else wordFreq.set(w, { count: 1, si });
+        }
+      }
+    }
+  }
+
+  // Summary chips
+  const totalUnique = wordFreq.size;
+  let totalHits = 0;
+  wordFreq.forEach(v => { totalHits += v.count; });
+  const coveredSentences = lesson.filter(line =>
+    [...wordFreq.keys()].some(w => line.jp.includes(w))
+  ).length;
+
+  const row = document.getElementById('vocabSummaryRow');
+  row.innerHTML = `
+    <div class="vocab-stat-chip"><div class="vsn">${totalUnique}</div><div class="vsl">Unique Words</div></div>
+    <div class="vocab-stat-chip"><div class="vsn">${totalHits}</div><div class="vsl">Total Hits</div></div>
+    <div class="vocab-stat-chip"><div class="vsn">${coveredSentences}</div><div class="vsl">Sentences w/ Vocab</div></div>
+    <div class="vocab-stat-chip"><div class="vsn">${csvSets.length}</div><div class="vsl">CSV Lists</div></div>
+  `;
+
+  // Store for rendering
+  window._vocabFreqMap = wordFreq;
+  renderVocabWords();
+  renderVocabNotes();
+}
+
+function renderVocabWords() {
+  const map = window._vocabFreqMap;
+  const list = document.getElementById('vocabWordList');
+  if (!map || map.size === 0) {
+    list.innerHTML = `<div class="vocab-empty"><i class="fa-solid fa-highlighter"></i>No highlighted words found in this lesson.<br>Load a CSV list and a lesson to see stats.</div>`;
+    return;
+  }
+
+  const query = (document.getElementById('vocabSearch').value || '').toLowerCase();
+  let entries = [...map.entries()].map(([word, { count, si }]) => {
+    const set = csvSets[si];
+    const { col2, col3 } = set ? (set.wordMap.get(word) || {}) : {};
+    return { word, count, si, col2: col2||'', col3: col3||'' };
+  });
+
+  // Filter
+  if (query) {
+    entries = entries.filter(e =>
+      e.word.includes(query) ||
+      e.col2.toLowerCase().includes(query) ||
+      e.col3.toLowerCase().includes(query)
+    );
+  }
+
+  // Sort
+  if (vocabSort === 'freq')  entries.sort((a,b) => b.count - a.count);
+  if (vocabSort === 'alpha') entries.sort((a,b) => a.word.localeCompare(b.word));
+  if (vocabSort === 'list')  entries.sort((a,b) => a.si - b.si || b.count - a.count);
+
+  if (!entries.length) {
+    list.innerHTML = `<div class="vocab-empty"><i class="fa-solid fa-magnifying-glass"></i>No words match your search.</div>`;
+    return;
+  }
+
+  const maxCount = Math.max(...entries.map(e => e.count));
+  list.innerHTML = entries.map(e => {
+    const set = csvSets[e.si];
+    const col = set ? CSV_COLORS[set.colorIdx % CSV_COLORS.length] : { bg: '#e2e8f0' };
+    const freqClass = e.count >= Math.ceil(maxCount * 0.66) ? 'freq-high' : e.count >= Math.ceil(maxCount * 0.33) ? 'freq-med' : '';
+    const def = [e.col2, e.col3].filter(Boolean).join(' · ');
+    return `<div class="vocab-word-row">
+      <div>
+        <div class="vocab-word-jp">${escHtml(e.word)}</div>
+        ${def ? `<div class="vocab-word-def">${escHtml(def)}</div>` : ''}
+      </div>
+      <div class="vocab-word-color" style="background:${col.bg};border:1.5px solid ${col.hover};"></div>
+      <div class="vocab-count-badge ${freqClass}" title="Appears in ${e.count} sentence(s)">${e.count}×</div>
+    </div>`;
+  }).join('');
+}
+
+function renderVocabNotes() {
+  const list = document.getElementById('vocabNotesList');
+  const noted = sentenceNotes
+    .map((note, i) => ({ note, i }))
+    .filter(n => n.note && n.note.trim());
+
+  if (!noted.length) {
+    list.innerHTML = `<div class="vocab-empty"><i class="fa-regular fa-note-sticky"></i>No sentence notes yet.<br>Click the <strong>Note</strong> button on any sentence card to add one.</div>`;
+    return;
+  }
+  list.innerHTML = noted.map(({ note, i }) => {
+    const line = lesson[i];
+    return `<div class="notes-list-item">
+      <div class="notes-list-num">#${i+1}</div>
+      <div>
+        <div class="notes-list-jp">${escHtml(line ? line.jp : '')}</div>
+        <div class="notes-list-note">${escHtml(note)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ================================================================
+   VOCAB CSV EXPORT
+================================================================ */
+async function exportVocabCsv() {
+  const map = window._vocabFreqMap;
+  if (!map || map.size === 0) {
+    alert('No vocabulary data to export. Load a lesson and a CSV word list first.');
+    return;
+  }
+
+  const btn = document.getElementById('vocabExportBtn');
+  const origHtml = btn.innerHTML;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating…';
+  btn.disabled = true;
+
+  // Build entries list (same sort as current view)
+  let entries = [...map.entries()].map(([word, { count, si }]) => {
+    const set = csvSets[si];
+    const { col2, col3 } = set ? (set.wordMap.get(word) || {}) : {};
+    return { word, count, si, col2: col2 || '', col3: col3 || '' };
+  });
+
+  if (vocabSort === 'freq')  entries.sort((a, b) => b.count - a.count);
+  if (vocabSort === 'alpha') entries.sort((a, b) => a.word.localeCompare(b.word));
+  if (vocabSort === 'list')  entries.sort((a, b) => a.si - b.si || b.count - a.count);
+
+  // Attempt furigana conversion for each word
+  async function getFurigana(word) {
+    if (kuroshiroReady && kuroshiroInst) {
+      try {
+        // Convert to katakana reading (plain text, no ruby tags)
+        const reading = await kuroshiroInst.convert(word, { mode: 'normal', to: 'hiragana' });
+        // If reading equals original word (all kana/latin), return empty
+        return reading === word ? '' : reading;
+      } catch (e) {
+        return '';
+      }
+    }
+    // Fall back to col2 if available (often contains reading)
+    return '';
+  }
+
+  // Resolve furigana for all entries (parallel)
+  const furiganaList = await Promise.all(entries.map(e => getFurigana(e.word)));
+
+  // Build CSV
+  const csvRows = [['Japanese', 'Furigana', 'Definition']];
+  entries.forEach((e, i) => {
+    const furigana = furiganaList[i] || e.col2 || '';
+    // col3 is definition; if absent, try col2 as definition (when col2 isn't a reading)
+    const definition = e.col3 || (e.col2 && e.col2 !== furigana ? e.col2 : '');
+    csvRows.push([e.word, furigana, definition]);
+  });
+
+  const csvText = csvRows.map(row =>
+    row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+
+  const blob = new Blob(['\uFEFF' + csvText], { type: 'text/csv;charset=utf-8;' });
+  Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: 'vocabulary.csv'
+  }).click();
+
+  btn.innerHTML = '<i class="fa-solid fa-check"></i> Exported!';
+  setTimeout(() => {
+    btn.innerHTML = origHtml;
+    btn.disabled = false;
+  }, 1800);
+}
+
+
+/* ================================================================
+   DARK MODE
+================================================================ */
+function toggleDark() {
+  const isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('jp_dark', isDark ? '1' : '0');
+  const btn = document.getElementById('darkBtn');
+  btn.innerHTML = isDark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+  btn.classList.toggle('loaded', isDark);
+  if (waveformData) drawWaveform();
+}
+(function initDark() {
+  if (localStorage.getItem('jp_dark') === '1') {
+    document.body.classList.add('dark');
+    const btn = document.getElementById('darkBtn');
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-sun"></i>'; btn.classList.add('loaded'); }
+  }
+})();
+</script>
+
+<!-- Shortcuts Modal -->
+<div class="modal-overlay" id="aboutModal" onclick="closeAboutOnBg(event)">
+  <div class="modal">
+    <div class="modal-title">
+      <span><i class="fa-solid fa-keyboard" style="color:var(--primary);margin-right:8px;"></i>Keyboard Shortcuts</span>
+      <button class="modal-close" onclick="toggleAbout()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="shortcut-grid">
+      <kbd>A</kbd>        <span>Previous sentence</span>
+      <kbd>D</kbd>        <span>Next sentence</span>
+      <div class="shortcut-divider"></div>
+      <kbd>Space</kbd>    <span>Play / Pause</span>
+      <kbd>R</kbd>        <span>Replay current sentence</span>
+      <kbd>←</kbd>        <span>Rewind 5 seconds</span>
+      <kbd>→</kbd>        <span>Forward 5 seconds</span>
+      <div class="shortcut-divider"></div>
+      <kbd>1</kbd> – <kbd>5</kbd> <span>Rate sentence difficulty</span>
+      <div class="shortcut-divider"></div>
+      <kbd>J</kbd>        <span>Set A-B loop start</span>
+      <kbd>K</kbd>        <span>Set A-B loop end</span>
+      <kbd>L</kbd>        <span>Clear A-B loop</span>
+    </div>
+  </div>
+</div>
+
+<!-- Vocab Stats Modal -->
+<div class="modal-overlay" id="vocabModal" onclick="if(event.target===this)closeVocabPanel()">
+  <div class="modal vocab-modal">
+    <div class="modal-title">
+      <span><i class="fa-solid fa-chart-simple" style="color:var(--primary);margin-right:8px;"></i>Vocabulary Stats</span>
+      <button class="modal-close" onclick="closeVocabPanel()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="vocab-tabs">
+      <button class="vocab-tab active" id="vtab-words" onclick="switchVocabTab('words')">Words Found</button>
+      <button class="vocab-tab" id="vtab-notes" onclick="switchVocabTab('notes')">Sentence Notes</button>
+    </div>
+    <!-- Words panel -->
+    <div class="vocab-panel active" id="vpanel-words">
+      <div class="vocab-summary-row" id="vocabSummaryRow"></div>
+      <input class="vocab-search" id="vocabSearch" type="text" placeholder="Search words or definitions…" oninput="renderVocabWords()">
+      <div class="vocab-sort-row">
+        <span style="font-size:0.7rem;color:var(--muted);margin-right:4px;">Sort:</span>
+        <button class="vocab-sort-btn active" id="vsort-freq" onclick="setVocabSort('freq')">Frequency ↓</button>
+        <button class="vocab-sort-btn" id="vsort-alpha" onclick="setVocabSort('alpha')">A → Z</button>
+        <button class="vocab-sort-btn" id="vsort-list" onclick="setVocabSort('list')">By List</button>
+        <button class="vocab-sort-btn" id="vocabExportBtn" onclick="exportVocabCsv()" style="margin-left:auto;border-color:var(--primary);color:var(--primary);" title="Download vocab as CSV">
+          <i class="fa-solid fa-file-csv"></i> Export CSV
+        </button>
+      </div>
+      <div id="vocabWordList"></div>
+    </div>
+    <!-- Notes panel -->
+    <div class="vocab-panel" id="vpanel-notes">
+      <div id="vocabNotesList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Results Modal -->
+<div class="modal-overlay" id="resultsModal" onclick="if(event.target===this)closeResults()">
+  <div class="modal results-modal">
+    <div class="modal-title">
+      <span><i class="fa-solid fa-flag-checkered" style="color:var(--primary);margin-right:8px;"></i><span id="resultsTitle">Results</span></span>
+      <button class="modal-close" onclick="closeResults()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="results-summary" id="resultsSummary"></div>
+    <div class="results-list"   id="resultsList"></div>
+    <div class="results-actions">
+      <button class="results-export-btn" onclick="exportResults()">
+        <i class="fa-solid fa-file-csv"></i> Export CSV
+      </button>
+      <button class="results-export-btn" onclick="downloadLesson()">
+        <i class="fa-solid fa-download"></i> Download JSON
+      </button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
