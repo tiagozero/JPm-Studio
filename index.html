@@ -795,6 +795,7 @@ rt {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .csv-color-picker label {
   font-size: 0.7rem;
@@ -802,15 +803,50 @@ rt {
   white-space: nowrap;
 }
 .csv-color-btn {
-  width: 24px; height: 24px;
+  width: 22px; height: 22px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
   transition: transform .12s, border-color .12s;
   flex-shrink: 0;
+  padding: 0;
 }
 .csv-color-btn:hover { transform: scale(1.2); }
-.csv-color-btn.selected { border-color: #475569; transform: scale(1.15); }
+.csv-color-btn.selected { border-color: #475569; transform: scale(1.15); box-shadow: 0 0 0 2px white, 0 0 0 4px #475569; }
+
+/* Native color input styled as a swatch */
+.csv-color-input-wrap {
+  position: relative;
+  width: 22px; height: 22px;
+  flex-shrink: 0;
+}
+.csv-color-input-swatch {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px dashed #94a3b8;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.55rem;
+  color: #94a3b8;
+  transition: border-color .12s, transform .12s;
+  background: transparent;
+  overflow: hidden;
+}
+.csv-color-input-swatch:hover { border-color: var(--primary); color: var(--primary); transform: scale(1.1); }
+.csv-color-input-swatch.custom-active {
+  border-style: solid;
+  border-color: #475569;
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px white, 0 0 0 4px #475569;
+}
+.csv-color-input-native {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%; height: 100%;
+  padding: 0; border: none;
+}
 .csv-del-btn {
   background: none; border: none; cursor: pointer;
   color: #cbd5e1; font-size: 0.85rem; padding: 4px;
@@ -1087,6 +1123,8 @@ body.dark .result-item.r0 { border-left-color: #2f3336; opacity: .5; }
 body.dark .csv-del-btn:hover { background: #1f0505; color: #f87171; }
 body.dark .csv-color-btn.selected { border-color: #e7e9ea; }
 body.dark .csv-empty i { color: #1d9bf0; }
+body.dark .csv-color-input-swatch { border-color: #536471; color: #536471; }
+body.dark .csv-color-input-swatch:hover { border-color: #1d9bf0; color: #1d9bf0; }
 body.dark .txt-preview-sentence { border-bottom-color: #1e2328; }
 body.dark .dropdown-item:hover { background: #1e2328; color: #1d9bf0; }
 body.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1602,6 +1640,50 @@ const CSV_COLORS = [
   { name: 'Peach',      bg: '#fed7aa', hover: '#fb923c', darkBg: '#431407', darkHover: '#7c2d12' },
 ];
 
+/**
+ * Given any hex color, derive the 4-value highlight theme used by .hl spans.
+ * - bg:       light tint (20% opacity blend toward white)
+ * - hover:    the hex itself (vivid, used on hover)
+ * - darkBg:   very dark tint (blended toward black)
+ * - darkHover:slightly lighter dark tint
+ */
+function hexToHighlight(hex) {
+  // Parse #rrggbb or #rgb
+  let r, g, b;
+  const h = hex.replace('#','');
+  if (h.length === 3) {
+    r = parseInt(h[0]+h[0], 16);
+    g = parseInt(h[1]+h[1], 16);
+    b = parseInt(h[2]+h[2], 16);
+  } else {
+    r = parseInt(h.slice(0,2), 16);
+    g = parseInt(h.slice(2,4), 16);
+    b = parseInt(h.slice(4,6), 16);
+  }
+  const toHex = v => v.toString(16).padStart(2,'0');
+  // bg: mix 30% color into white
+  const bg = '#' + toHex(Math.round(r*0.35 + 255*0.65))
+                 + toHex(Math.round(g*0.35 + 255*0.65))
+                 + toHex(Math.round(b*0.35 + 255*0.65));
+  // hover: the hex itself
+  const hover = hex;
+  // darkBg: mix 40% color into near-black (#0d0d0d)
+  const darkBg = '#' + toHex(Math.round(r*0.40 + 13*0.60))
+                     + toHex(Math.round(g*0.40 + 13*0.60))
+                     + toHex(Math.round(b*0.40 + 13*0.60));
+  // darkHover: mix 60% color into near-black
+  const darkHover = '#' + toHex(Math.round(r*0.60 + 13*0.40))
+                        + toHex(Math.round(g*0.60 + 13*0.40))
+                        + toHex(Math.round(b*0.60 + 13*0.40));
+  return { bg, hover, darkBg, darkHover };
+}
+
+/** Return the color theme for a csvSet (custom color or preset palette fallback) */
+function getCsvSetColor(set) {
+  if (set.customColor) return hexToHighlight(set.customColor);
+  return CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+}
+
 let chaptersOpen = false;
 let ratings = [];
 let isSeeking = false;
@@ -1638,6 +1720,7 @@ function saveCsvSets() {
     id: s.id,
     name: s.name,
     colorIdx: s.colorIdx,
+    customColor: s.customColor || null,
     // Serialize wordMap entries
     words: [...s.wordMap.entries()]
   }));
@@ -1652,7 +1735,7 @@ function loadCsvSets() {
     csvSets = saved.map(s => {
       const wordMap = new Map(s.words);
       const hlWords = [...wordMap.keys()].sort((a, b) => b.length - a.length);
-      return { id: s.id, name: s.name, colorIdx: s.colorIdx, wordMap, hlWords };
+      return { id: s.id, name: s.name, colorIdx: s.colorIdx || 0, customColor: s.customColor || null, wordMap, hlWords };
     });
     updateCsvBtn();
     renderLine();
@@ -1747,7 +1830,7 @@ function applyHighlights(text) {
   for (const h of hits) {
     out += escHtml(text.slice(cur, h.start));
     const set = csvSets[h.si];
-    const col = CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+    const col = getCsvSetColor(set);
     const { col2, col3 } = set.wordMap.get(h.word) || {};
     const attrs = (col2 ? ` data-t2="${escAttr(col2)}"` : '') +
                   (col3 ? ` data-t3="${escAttr(col3)}"` : '');
@@ -1928,7 +2011,7 @@ function applyHighlightsToRuby(rubyHtml) {
     if (tEnd < cursor) continue;
 
     const set = csvSets[h.si];
-    const col = CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+    const col = getCsvSetColor(set);
     const { col2, col3 } = set.wordMap.get(h.word) || {};
     const attrs = (col2 ? ` data-t2="${escAttr(col2)}"` : '') +
                   (col3 ? ` data-t3="${escAttr(col3)}"` : '');
@@ -2316,7 +2399,7 @@ document.getElementById('csvAddInput').addEventListener('change', function(e) {
       while (usedColors.has(colorIdx) && colorIdx < CSV_COLORS.length) colorIdx++;
       if (colorIdx >= CSV_COLORS.length) colorIdx = csvSets.length % CSV_COLORS.length;
 
-      csvSets.push({ id, name: file.name, colorIdx, wordMap, hlWords });
+      csvSets.push({ id, name: file.name, colorIdx, customColor: null, wordMap, hlWords });
       loaded++;
       if (loaded === files.length) {
         saveCsvSets();
@@ -2352,7 +2435,11 @@ function renderCsvList() {
   }
   container.innerHTML = '';
   csvSets.forEach((set, idx) => {
-    const col = CSV_COLORS[set.colorIdx % CSV_COLORS.length];
+    const col = getCsvSetColor(set);
+    // Determine the "active" hex for the native picker value
+    const activeHex = set.customColor || CSV_COLORS[set.colorIdx % CSV_COLORS.length].hover;
+    const isCustom = !!set.customColor;
+
     const item = document.createElement('div');
     item.className = 'csv-item';
     item.innerHTML = `
@@ -2363,19 +2450,31 @@ function renderCsvList() {
       <span class="csv-priority-badge">P${idx + 1}</span>
       <div class="csv-item-left">
         <div class="csv-item-name">${escHtml(set.name)}</div>
-        <div class="csv-item-meta">${set.wordMap.size} words &nbsp;·&nbsp; 
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col.bg};border:1px solid #ccc;vertical-align:middle;"></span>
-          ${escHtml(col.name)}
+        <div class="csv-item-meta">${set.wordMap.size} words &nbsp;·&nbsp;
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col.bg};border:1.5px solid ${col.hover};vertical-align:middle;"></span>
+          <span id="csv-color-label-${idx}">${isCustom ? activeHex : CSV_COLORS[set.colorIdx % CSV_COLORS.length].name}</span>
         </div>
       </div>
       <div class="csv-color-picker">
         <label>Color:</label>
         ${CSV_COLORS.map((c, ci) => `
-          <button class="csv-color-btn ${set.colorIdx === ci ? 'selected' : ''}"
-            style="background:${c.bg}"
+          <button class="csv-color-btn ${!isCustom && set.colorIdx === ci ? 'selected' : ''}"
+            style="background:${c.bg};border-color:${!isCustom && set.colorIdx === ci ? '#475569' : 'transparent'}"
             title="${c.name}"
-            onclick="setCsvColor(${idx}, ${ci})"></button>
+            onclick="setCsvPresetColor(${idx}, ${ci})"></button>
         `).join('')}
+        <div class="csv-color-input-wrap" title="Custom color">
+          <div class="csv-color-input-swatch ${isCustom ? 'custom-active' : ''}"
+               id="csv-swatch-${idx}"
+               style="${isCustom ? `background:${col.bg};` : ''}">
+            ${isCustom ? '' : '<i class="fa-solid fa-eye-dropper" style="font-size:0.6rem;pointer-events:none;"></i>'}
+          </div>
+          <input type="color" class="csv-color-input-native"
+                 value="${activeHex}"
+                 id="csv-colorpicker-${idx}"
+                 oninput="onCsvColorPick(${idx}, this.value)"
+                 onchange="onCsvColorPick(${idx}, this.value)">
+        </div>
       </div>
       <button class="csv-del-btn" onclick="deleteCsvSet(${idx})" title="Remove this CSV"><i class="fa-solid fa-trash"></i></button>
     `;
@@ -2383,10 +2482,31 @@ function renderCsvList() {
   });
 }
 
-function setCsvColor(idx, colorIdx) {
-  csvSets[idx].colorIdx = colorIdx;
+function setCsvPresetColor(idx, colorIdx) {
+  csvSets[idx].colorIdx   = colorIdx;
+  csvSets[idx].customColor = null; // clear any custom color
   saveCsvSets();
   renderCsvList();
+  renderLine();
+}
+
+function onCsvColorPick(idx, hex) {
+  csvSets[idx].customColor = hex;
+  // Update the swatch live without full re-render (avoids closing picker)
+  const col    = hexToHighlight(hex);
+  const swatch = document.getElementById(`csv-swatch-${idx}`);
+  const label  = document.getElementById(`csv-color-label-${idx}`);
+  if (swatch) {
+    swatch.style.background = col.bg;
+    swatch.innerHTML = '';
+    swatch.classList.add('custom-active');
+  }
+  if (label) label.textContent = hex;
+  // Deselect preset swatches visually
+  const item = swatch && swatch.closest('.csv-item');
+  if (item) item.querySelectorAll('.csv-color-btn').forEach(b => b.classList.remove('selected'));
+  // Persist and refresh highlights
+  saveCsvSets();
   renderLine();
 }
 
@@ -2975,7 +3095,7 @@ function renderVocabWords() {
   const maxCount = Math.max(...entries.map(e => e.count));
   list.innerHTML = entries.map(e => {
     const set = csvSets[e.si];
-    const col = set ? CSV_COLORS[set.colorIdx % CSV_COLORS.length] : { bg: '#e2e8f0' };
+    const col = set ? getCsvSetColor(set) : { bg: '#e2e8f0' };
     const freqClass = e.count >= Math.ceil(maxCount * 0.66) ? 'freq-high' : e.count >= Math.ceil(maxCount * 0.33) ? 'freq-med' : '';
     const def = [e.col2, e.col3].filter(Boolean).join(' · ');
     return `<div class="vocab-word-row">
